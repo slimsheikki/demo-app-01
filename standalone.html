@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Markup — Image Review</title>
+<style>
+  :root {
+    --ground: #2b2b2e;
+    --ground-2: #232326;
+    --glass-bg: rgba(255, 255, 255, 0.06);
+    --glass-bg-hover: rgba(255, 255, 255, 0.10);
+    --glass-border: rgba(255, 255, 255, 0.14);
+    --glass-border-active: rgba(255, 255, 255, 0.45);
+    --txt: rgba(255, 255, 255, 0.92);
+    --txt-dim: rgba(255, 255, 255, 0.45);
+    --accent-glow: rgba(120, 180, 255, 0.35);
+    --danger: #ff6b6b;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100vh;        /* fallback */
+    height: 100dvh;       /* modern, handles mobile browser chrome */
+    overflow: hidden;
+    background:
+      radial-gradient(120% 120% at 50% 0%, var(--ground) 0%, var(--ground-2) 100%);
+    color: var(--txt);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ---- Konva viewport ---- */
+  #stage {
+    position: absolute;
+    inset: 0;
+    touch-action: none;          /* we handle pan/zoom ourselves */
+  }
+  #stage.grabbable { cursor: grab; }
+  #stage.grabbing  { cursor: grabbing; }
+
+  /* ---- Drop / upload card ---- */
+  #drop {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 24px;
+  }
+  #drop.hide { display: none; }
+
+  .card {
+    width: min(440px, 100%);
+    padding: 48px 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+    text-align: center;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 22px;
+    backdrop-filter: blur(22px) saturate(140%);
+    -webkit-backdrop-filter: blur(22px) saturate(140%);
+    box-shadow:
+      0 24px 60px rgba(0, 0, 0, 0.45),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10);
+    transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  #drop.dragover .card {
+    border-color: var(--glass-border-active);
+    background: var(--glass-bg-hover);
+    box-shadow:
+      0 24px 70px rgba(0, 0, 0, 0.5),
+      0 0 0 4px var(--accent-glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transform: scale(1.01);
+  }
+
+  .card .icon {
+    width: 52px;
+    height: 52px;
+    opacity: 0.85;
+    stroke: var(--txt);
+    stroke-width: 1.5;
+    fill: none;
+  }
+
+  .card h1 {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .card p {
+    font-size: 13.5px;
+    color: var(--txt-dim);
+    line-height: 1.5;
+    max-width: 32ch;
+  }
+
+  /* ---- Silver button ---- */
+  .btn-silver {
+    appearance: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: #2a2a2e;
+    padding: 12px 30px;
+    border-radius: 13px;
+    background: linear-gradient(180deg, #fdfdfd 0%, #e7e7ea 48%, #c9c9cf 100%);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.9) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.06) inset,
+      0 6px 18px rgba(0, 0, 0, 0.35);
+    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+  }
+  .btn-silver:hover { filter: brightness(1.04); transform: translateY(-1px); }
+  .btn-silver:active { transform: translateY(0); filter: brightness(0.97);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 2px 8px rgba(0,0,0,0.3); }
+
+  .hint {
+    font-size: 11.5px;
+    color: var(--txt-dim);
+    letter-spacing: 0.02em;
+  }
+
+  /* ---- Error toast ---- */
+  #err {
+    position: absolute;
+    left: 50%;
+    bottom: 28px;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(40, 20, 22, 0.85);
+    border: 1px solid rgba(255, 107, 107, 0.5);
+    color: #ffd7d7;
+    padding: 11px 18px;
+    border-radius: 12px;
+    font-size: 13px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s ease;
+    z-index: 30;
+    max-width: min(90vw, 480px);
+    text-align: center;
+  }
+  #err.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---- Floating controls (shown once an image is loaded) ---- */
+  #controls {
+    position: absolute;
+    left: 50%;
+    bottom: max(20px, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 9px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 20;
+    user-select: none;
+  }
+  #controls.show { display: flex; }
+
+  .cbtn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--txt);
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    transition: background .14s ease;
+  }
+  .cbtn:hover { background: var(--glass-bg-hover); }
+  .cbtn:active { background: rgba(255,255,255,0.16); }
+  .cbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
+
+  #zoomLabel {
+    min-width: 52px;
+    text-align: center;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--txt);
+    cursor: pointer;
+    padding: 0 4px;
+    user-select: none;
+  }
+  .divider { width: 1px; height: 22px; background: var(--glass-border); margin: 0 2px; }
+
+  input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+  <!-- Canvas viewport -->
+  <div id="stage"></div>
+
+  <!-- Drop / upload card -->
+  <div id="drop">
+    <div class="card" id="card">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 14v3.5A2.5 2.5 0 0 0 6.5 20h11a2.5 2.5 0 0 0 2.5-2.5V14" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>Drop an image to review</h1>
+        <p>Drag a file anywhere, or choose one to open it in the viewer.</p>
+      </div>
+      <button class="btn-silver" id="pickBtn">Upload image</button>
+      <span class="hint">JPG · PNG · WebP · GIF · AVIF</span>
+    </div>
+  </div>
+
+  <!-- Zoom / pan controls -->
+  <div id="controls">
+    <button class="cbtn" id="zoomOut" title="Zoom out" aria-label="Zoom out">
+      <svg viewBox="0 0 24 24"><path d="M5 12h14" stroke-linecap="round"/></svg>
+    </button>
+    <span id="zoomLabel" title="Reset to fit">100%</span>
+    <button class="cbtn" id="zoomIn" title="Zoom in" aria-label="Zoom in">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>
+    </button>
+    <div class="divider"></div>
+    <button class="cbtn" id="fitBtn" title="Fit to screen" aria-label="Fit to screen">
+      <svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="cbtn" id="newBtn" title="Open another image" aria-label="Open another image">
+      <svg viewBox="0 0 24 24"><path d="M4 16V6a2 2 0 0 1 2-2h8M9 8h11a0 0 0 0 1 0 0v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 4v4h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+
+  <!-- Error toast -->
+  <div id="err"></div>
+
+  <input type="file" id="fileInput" accept="image/*">
+
+  <script src="https://cdn.jsdelivr.net/npm/konva@9.3.16/konva.min.js"></script>
+  <script>
+  (function () {
+    'use strict';
+
+    // ---- Config ----
+    var MIN_SCALE = 0.1;
+    var MAX_SCALE = 8;
+    var ZOOM_STEP = 1.2;       // per wheel notch / button press
+    var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
+
+    // ---- Elements ----
+    var dropEl    = document.getElementById('drop');
+    var stageEl   = document.getElementById('stage');
+    var controls  = document.getElementById('controls');
+    var errEl     = document.getElementById('err');
+    var fileInput = document.getElementById('fileInput');
+    var zoomLabel = document.getElementById('zoomLabel');
+
+    // ---- Konva setup ----
+    var stage = new Konva.Stage({
+      container: 'stage',
+      width: window.innerWidth,
+      height: window.innerHeight,
+      draggable: true
+    });
+    var layer = new Konva.Layer();
+    stage.add(layer);
+
+    var imageNode = null;   // current Konva.Image
+    var imgW = 0, imgH = 0; // natural dimensions
+
+    // ---- Error toast ----
+    var errTimer = null;
+    function showError(msg) {
+      errEl.textContent = msg;
+      errEl.classList.add('show');
+      if (errTimer) clearTimeout(errTimer);
+      errTimer = setTimeout(function () { errEl.classList.remove('show'); }, 4200);
+    }
+
+    // ---- Zoom helpers ----
+    function clamp(s) { return Math.max(MIN_SCALE, Math.min(MAX_SCALE, s)); }
+
+    function updateZoomLabel() {
+      zoomLabel.textContent = Math.round(stage.scaleX() * 100) + '%';
+    }
+
+    // Zoom toward a specific screen point (keeps that point stationary)
+    function zoomTo(newScale, pointer) {
+      var oldScale = stage.scaleX();
+      newScale = clamp(newScale);
+      if (newScale === oldScale) return;
+
+      var p = pointer || { x: stage.width() / 2, y: stage.height() / 2 };
+      var mousePoint = {
+        x: (p.x - stage.x()) / oldScale,
+        y: (p.y - stage.y()) / oldScale
+      };
+      stage.scale({ x: newScale, y: newScale });
+      stage.position({
+        x: p.x - mousePoint.x * newScale,
+        y: p.y - mousePoint.y * newScale
+      });
+      stage.batchDraw();
+      updateZoomLabel();
+    }
+
+    function zoomByStep(factor) {
+      zoomTo(stage.scaleX() * factor, null);
+    }
+
+    // Fit the image to the viewport and center it
+    function fitToScreen() {
+      if (!imageNode) return;
+      var sw = stage.width(), sh = stage.height();
+      var scale = clamp(Math.min(sw / imgW, sh / imgH) * FIT_PADDING);
+      stage.scale({ x: scale, y: scale });
+      stage.position({
+        x: (sw - imgW * scale) / 2,
+        y: (sh - imgH * scale) / 2
+      });
+      stage.batchDraw();
+      updateZoomLabel();
+    }
+
+    // ---- Load an image file ----
+    function loadFile(file) {
+      if (!file) return;
+      if (!file.type || file.type.indexOf('image/') !== 0) {
+        showError('That file isn’t an image we can open.');
+        return;
+      }
+
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+
+      img.onload = function () {
+        imgW = img.naturalWidth || img.width;
+        imgH = img.naturalHeight || img.height;
+        if (!imgW || !imgH) {
+          showError('Couldn’t read this image. Try JPG, PNG or WebP.');
+          URL.revokeObjectURL(url);
+          return;
+        }
+
+        // Clear any previous image
+        if (imageNode) { imageNode.destroy(); }
+        imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
+        layer.add(imageNode);
+
+        dropEl.classList.add('hide');
+        controls.classList.add('show');
+        stageEl.classList.add('grabbable');
+
+        // Let layout settle, then size the stage and fit
+        requestAnimationFrame(function () {
+          resizeStage();
+          fitToScreen();
+        });
+      };
+
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        // HEIC and some other formats fail to decode in most browsers
+        var name = (file.name || '').toLowerCase();
+        if (name.endsWith('.heic') || name.endsWith('.heif')) {
+          showError('HEIC photos aren’t supported by browsers yet. Export as JPG and try again.');
+        } else {
+          showError('Couldn’t open this file. Try JPG, PNG, WebP, GIF or AVIF.');
+        }
+      };
+
+      img.src = url;
+    }
+
+    // ---- Stage sizing ----
+    function resizeStage() {
+      stage.width(window.innerWidth);
+      stage.height(window.innerHeight);
+      stage.batchDraw();
+    }
+
+    window.addEventListener('resize', function () {
+      resizeStage();
+    });
+
+    // ---- Wheel zoom (desktop / trackpad) ----
+    stage.on('wheel', function (e) {
+      e.evt.preventDefault();
+      if (!imageNode) return;
+      var pointer = stage.getPointerPosition();
+      var direction = e.evt.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
+      // Trackpad pinch reports ctrlKey; make it a touch finer
+      if (e.evt.ctrlKey) {
+        direction = e.evt.deltaY > 0 ? 1 / 1.05 : 1.05;
+      }
+      zoomTo(stage.scaleX() * direction, pointer);
+    });
+
+    // ---- Pinch zoom (touch) ----
+    var lastDist = 0;
+    var lastCenter = null;
+
+    function getDistance(p1, p2) {
+      return Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    }
+    function getCenter(p1, p2) {
+      return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    }
+
+    stage.on('touchmove', function (e) {
+      var t1 = e.evt.touches[0];
+      var t2 = e.evt.touches[1];
+      if (!t1 || !t2 || !imageNode) return;
+
+      e.evt.preventDefault();
+      // While pinching, suspend stage dragging so it doesn't fight the gesture
+      if (stage.isDragging()) stage.stopDrag();
+
+      var rect = stageEl.getBoundingClientRect();
+      var p1 = { x: t1.clientX - rect.left, y: t1.clientY - rect.top };
+      var p2 = { x: t2.clientX - rect.left, y: t2.clientY - rect.top };
+
+      var center = getCenter(p1, p2);
+      var dist = getDistance(p1, p2);
+
+      if (!lastDist) { lastDist = dist; lastCenter = center; return; }
+
+      var scaleBy = dist / lastDist;
+      zoomTo(stage.scaleX() * scaleBy, center);
+
+      // Pan with the pinch center movement
+      if (lastCenter) {
+        var dx = center.x - lastCenter.x;
+        var dy = center.y - lastCenter.y;
+        stage.position({ x: stage.x() + dx, y: stage.y() + dy });
+        stage.batchDraw();
+      }
+
+      lastDist = dist;
+      lastCenter = center;
+    });
+
+    stage.on('touchend', function () {
+      lastDist = 0;
+      lastCenter = null;
+    });
+
+    // ---- Pan cursor feedback ----
+    stage.on('dragstart', function () { stageEl.classList.add('grabbing'); });
+    stage.on('dragend',   function () { stageEl.classList.remove('grabbing'); });
+
+    // ---- Double-click / double-tap to fit ----
+    stage.on('dblclick dbltap', function () { fitToScreen(); });
+
+    // ---- Drag & drop on the whole window ----
+    function hasFiles(e) {
+      if (!e.dataTransfer) return false;
+      var types = e.dataTransfer.types;
+      if (!types) return false;
+      for (var i = 0; i < types.length; i++) {
+        if (types[i] === 'Files') return true;
+      }
+      return false;
+    }
+
+    var dragDepth = 0;
+    window.addEventListener('dragenter', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth++;
+      dropEl.classList.remove('hide');
+      dropEl.classList.add('dragover');
+    });
+    window.addEventListener('dragover', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    window.addEventListener('dragleave', function (e) {
+      if (!hasFiles(e)) return;
+      dragDepth--;
+      if (dragDepth <= 0) {
+        dragDepth = 0;
+        dropEl.classList.remove('dragover');
+        if (imageNode) dropEl.classList.add('hide');
+      }
+    });
+    window.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dragDepth = 0;
+      dropEl.classList.remove('dragover');
+      if (imageNode) dropEl.classList.add('hide');
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) loadFile(files[0]);
+    });
+
+    // ---- File picker ----
+    function openPicker() { fileInput.value = ''; fileInput.click(); }
+    document.getElementById('pickBtn').addEventListener('click', openPicker);
+    document.getElementById('newBtn').addEventListener('click', openPicker);
+    fileInput.addEventListener('change', function () {
+      if (fileInput.files && fileInput.files.length) loadFile(fileInput.files[0]);
+    });
+
+    // ---- Control buttons ----
+    document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
+    document.getElementById('zoomOut').addEventListener('click', function () { zoomByStep(1 / ZOOM_STEP); });
+    document.getElementById('fitBtn').addEventListener('click', fitToScreen);
+    zoomLabel.addEventListener('click', fitToScreen);
+
+    updateZoomLabel();
+  })();
+  </script>
+</body>
+</html>
