@@ -255,6 +255,64 @@
   }
   .tbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
 
+  /* ---- Draw options (color + brush size), shown only in draw mode ---- */
+  #drawOptions {
+    position: absolute;
+    left: 50%;
+    top: calc(max(16px, env(safe-area-inset-top, 16px)) + 56px);
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 11px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 13px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 20;
+    user-select: none;
+    max-width: calc(100vw - 24px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #drawOptions.show { display: flex; }
+
+  .opt-group { display: flex; align-items: center; gap: 6px; }
+
+  .swatch {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    cursor: pointer;
+    padding: 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    transition: transform .12s ease, border-color .12s ease;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 2px var(--accent-glow), 0 1px 4px rgba(0,0,0,0.3);
+  }
+
+  .size-btn {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .12s ease;
+  }
+  .size-btn:hover { background: var(--glass-bg-hover); }
+  .size-btn.active { background: rgba(255,255,255,0.14); box-shadow: inset 0 1px 3px rgba(0,0,0,0.25); }
+  .size-btn .dot { border-radius: 50%; background: var(--txt); }
+
   /* ---- Commit / discard floating buttons ---- */
   #commitBar {
     position: absolute;
@@ -504,6 +562,17 @@
     </button>
   </div>
 
+  <!-- Draw options: color picker + brush sizes (shown only in draw mode) -->
+  <div id="drawOptions">
+    <div class="opt-group" id="swatches"></div>
+    <div class="divider"></div>
+    <div class="opt-group" id="sizes">
+      <button class="size-btn" data-size="2" title="Thin" aria-label="Thin brush"><span class="dot" style="width:5px;height:5px;"></span></button>
+      <button class="size-btn active" data-size="4" title="Medium" aria-label="Medium brush"><span class="dot" style="width:9px;height:9px;"></span></button>
+      <button class="size-btn" data-size="8" title="Thick" aria-label="Thick brush"><span class="dot" style="width:14px;height:14px;"></span></button>
+    </div>
+  </div>
+
   <!-- Commit / discard annotation -->
   <div id="commitBar">
     <button class="commit-btn commit-green" id="commitBtn" title="Add comment" aria-label="Add comment">
@@ -623,7 +692,8 @@
     var annotations = [];
     var annotationCount = 0;
     var DRAW_COLOR = '#FF6B6B';
-    var DRAW_WIDTH = 3;
+    var DRAW_WIDTH = 4;
+    var PALETTE = ['#FF6B6B', '#FF9F45', '#FFE066', '#4ADE80', '#5B9DFF', '#C77DFF', '#FFFFFF', '#1A1A1A'];
 
     // ---- Error toast ----
     var errTimer = null;
@@ -751,14 +821,40 @@
         if (imageNode) stageEl.classList.add('grabbable');
         document.getElementById('toolPan').classList.add('active');
         document.getElementById('toolDraw').classList.remove('active');
+        drawOptions.classList.remove('show');
       } else {
         stage.draggable(false);
         stageEl.classList.remove('grabbable', 'grabbing');
         stageEl.classList.add('draw-mode');
         document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
+        drawOptions.classList.add('show');
       }
     }
+
+    // ---- Build color swatches + wire brush sizes ----
+    var drawOptions = document.getElementById('drawOptions');
+    var swatchesEl = document.getElementById('swatches');
+    PALETTE.forEach(function (color) {
+      var sw = document.createElement('button');
+      sw.className = 'swatch' + (color === DRAW_COLOR ? ' active' : '');
+      sw.style.background = color;
+      sw.setAttribute('aria-label', 'Color ' + color);
+      sw.addEventListener('click', function () {
+        DRAW_COLOR = color;
+        swatchesEl.querySelectorAll('.swatch').forEach(function (s) { s.classList.remove('active'); });
+        sw.classList.add('active');
+      });
+      swatchesEl.appendChild(sw);
+    });
+
+    document.getElementById('sizes').querySelectorAll('.size-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        DRAW_WIDTH = parseInt(btn.getAttribute('data-size'), 10);
+        document.getElementById('sizes').querySelectorAll('.size-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+      });
+    });
 
     // ---- Canvas-space pointer coordinates ----
     function getCanvasPointer() {
