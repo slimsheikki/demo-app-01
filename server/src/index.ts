@@ -4,13 +4,16 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
 import uploadRouter from './routes/upload.js';
 import projectsRouter from './routes/projects.js';
 import shareRouter from './routes/share.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');
+
+// Ensure uploads directory exists on every start
+mkdirSync(path.join(__dirname, '..', 'uploads'), { recursive: true });
 const isProd = existsSync(path.join(clientDist, 'index.html'));
 
 const app = new Hono();
