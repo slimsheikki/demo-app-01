@@ -455,7 +455,7 @@
     position: absolute;
     right: 16px;
     top: max(16px, env(safe-area-inset-top, 16px));
-    display: flex;
+    display: none;
     flex-direction: column;
     width: 220px;
     background: rgba(22, 22, 28, 0.85);
@@ -960,6 +960,7 @@
         dropEl.classList.add('hide');
         controls.classList.add('show');
         toolbar.classList.add('show');
+        document.getElementById('colorPicker').style.display = 'flex';
         stageEl.classList.add('grabbable');
 
         // Let layout settle, then size the stage and fit
