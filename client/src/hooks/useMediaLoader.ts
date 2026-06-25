@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { nanoid } from 'nanoid';
 import type { Project, MediaFile } from '../types';
 import { uploadMedia } from '../utils/api';
+import { useUploadStore } from '../store/uploadStore';
 
 const ACCEPTED_TYPES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
@@ -64,15 +65,19 @@ export function useMediaLoader(): UseMediaLoaderReturn {
         activeLayerId: firstLayerId,
       };
 
-      // Upload in background, swap URL when done
+      // Upload in background, swap URL when done.
+      // Blob URL is intentionally not revoked so that undo stays safe
+      // (reverting to the blob URL won't break the image display).
+      useUploadStore.getState().setUploadPending(true);
       uploadMedia(file)
         .then(({ url }) => {
-          URL.revokeObjectURL(blobUrl);
-          // Patch the URL via a custom event so CanvasArea can update
           window.dispatchEvent(new CustomEvent('mediaUploaded', { detail: { url } }));
         })
         .catch((err) => {
           console.warn('Background upload failed:', err);
+        })
+        .finally(() => {
+          useUploadStore.getState().setUploadPending(false);
         });
 
       return project;

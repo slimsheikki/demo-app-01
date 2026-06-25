@@ -8,16 +8,17 @@ import {
   createRectShape,
   createEllipseShape,
   createArrowShape,
-  createTextShape,
 } from '../utils/shapeFactory';
 
 type DrawingState = 'idle' | 'drawing';
 
+type KonvaPointerEvent = Konva.KonvaEventObject<MouseEvent | TouchEvent>;
+
 interface UseDrawingReturn {
   inProgressShape: Shape | null;
   drawingState: DrawingState;
-  handleMouseDown: (e: Konva.KonvaEventObject<MouseEvent>) => void;
-  handleMouseMove: (e: Konva.KonvaEventObject<MouseEvent>) => void;
+  handleMouseDown: (e: KonvaPointerEvent) => void;
+  handleMouseMove: (e: KonvaPointerEvent) => void;
   handleMouseUp: () => void;
 }
 
@@ -26,10 +27,10 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
   const [inProgressShape, setInProgressShape] = useState<Shape | null>(null);
   const moveCountRef = useRef(0);
 
-  const { activeTool, color, strokeWidth, opacity, fontSize, eraserRadius } = useToolStore();
+  const { activeTool, color, strokeWidth, opacity, eraserRadius } = useToolStore();
   const { project, addShape, removeShapes } = useProjectStore();
 
-  const getPos = (e: Konva.KonvaEventObject<MouseEvent>) => {
+  const getPos = (e: KonvaPointerEvent) => {
     const stage = e.target.getStage();
     if (!stage) return null;
     const pos = stage.getPointerPosition();
@@ -38,8 +39,31 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
     return { x: pos.x / scale, y: pos.y / scale };
   };
 
+  const eraseAtPos = useCallback(
+    (pos: { x: number; y: number }) => {
+      if (!project) return;
+      const toRemove = project.shapes
+        .filter((s) => s.layerId === project.activeLayerId)
+        .filter((s) => {
+          if (s.type === 'pencil') {
+            for (let i = 0; i < s.points.length; i += 2) {
+              const dx = s.points[i] - pos.x;
+              const dy = s.points[i + 1] - pos.y;
+              if (Math.sqrt(dx * dx + dy * dy) <= eraserRadius) return true;
+            }
+            return false;
+          }
+          const bbox = getShapeBBox(s);
+          return pointNearRect(pos, bbox, eraserRadius);
+        })
+        .map((s) => s.id);
+      if (toRemove.length > 0) removeShapes(toRemove);
+    },
+    [project, eraserRadius, removeShapes]
+  );
+
   const handleMouseDown = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
+    (e: KonvaPointerEvent) => {
       if (!project) return;
       const activeLayer = project.layers.find((l) => l.id === project.activeLayerId);
       if (!activeLayer || activeLayer.locked) return;
@@ -52,25 +76,13 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
       if (activeTool === 'eraser') {
         const pos = getPos(e);
         if (!pos) return;
-        // Collect shapes in active layer whose bounding box overlaps eraser circle
-        const toRemove = project.shapes
-          .filter((s) => s.layerId === project.activeLayerId)
-          .filter((s) => {
-            if (s.type === 'pencil') {
-              for (let i = 0; i < s.points.length; i += 2) {
-                const dx = s.points[i] - pos.x;
-                const dy = s.points[i + 1] - pos.y;
-                if (Math.sqrt(dx * dx + dy * dy) <= eraserRadius) return true;
-              }
-              return false;
-            }
-            const bbox = getShapeBBox(s);
-            return pointNearRect(pos, bbox, eraserRadius);
-          })
-          .map((s) => s.id);
-        if (toRemove.length > 0) removeShapes(toRemove);
+        eraseAtPos(pos);
+        setDrawingState('drawing'); // stay in drawing state to support drag-erase
         return;
       }
+
+      // Text tool is handled entirely in CanvasArea via intercepted mousedown
+      if (activeTool === 'text') return;
 
       const pos = getPos(e);
       if (!pos) return;
@@ -98,9 +110,6 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
         case 'arrow':
           shape = createArrowShape({ ...baseOpts, x: pos.x, y: pos.y });
           break;
-        case 'text':
-          shape = createTextShape({ ...baseOpts, x: pos.x, y: pos.y, fontSize });
-          break;
       }
 
       if (!shape) return;
@@ -108,14 +117,23 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
       setInProgressShape(shape);
       setDrawingState('drawing');
     },
-    [project, activeTool, color, strokeWidth, opacity, fontSize, eraserRadius, removeShapes, setSelectedShapeId]
+    [project, activeTool, color, strokeWidth, opacity, eraserRadius, eraseAtPos, removeShapes, setSelectedShapeId]
   );
 
   const handleMouseMove = useCallback(
-    (e: Konva.KonvaEventObject<MouseEvent>) => {
-      if (drawingState !== 'drawing' || !inProgressShape) return;
+    (e: KonvaPointerEvent) => {
+      if (drawingState !== 'drawing') return;
+
       const pos = getPos(e);
       if (!pos) return;
+
+      // Eraser drag: erase shapes as cursor moves
+      if (activeTool === 'eraser') {
+        eraseAtPos(pos);
+        return;
+      }
+
+      if (!inProgressShape) return;
 
       moveCountRef.current++;
 
@@ -124,7 +142,6 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
 
         switch (prev.type) {
           case 'pencil': {
-            // Downsample: add every point but skip intermediates every 2 moves for perf
             const newPoints =
               moveCountRef.current % 2 === 0
                 ? [...prev.points, pos.x, pos.y]
@@ -151,11 +168,21 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
         }
       });
     },
-    [drawingState, inProgressShape]
+    [drawingState, inProgressShape, activeTool, eraseAtPos]
   );
 
   const handleMouseUp = useCallback(() => {
-    if (drawingState !== 'drawing' || !inProgressShape) return;
+    if (drawingState !== 'drawing') return;
+
+    if (activeTool === 'eraser') {
+      setDrawingState('idle');
+      return;
+    }
+
+    if (!inProgressShape) {
+      setDrawingState('idle');
+      return;
+    }
 
     // Only commit if shape has meaningful size
     let meaningful = true;
@@ -169,7 +196,7 @@ export function useDrawing(_selectedShapeId: string | null, setSelectedShapeId: 
 
     setInProgressShape(null);
     setDrawingState('idle');
-  }, [drawingState, inProgressShape, addShape]);
+  }, [drawingState, inProgressShape, activeTool, addShape]);
 
   return { inProgressShape, drawingState, handleMouseDown, handleMouseMove, handleMouseUp };
 }

@@ -14,6 +14,11 @@ interface Props {
   isActiveLayer: boolean;
 }
 
+// Only rect and ellipse support the resize transformer
+function isTransformable(shape: Shape | undefined): shape is Shape & { type: 'rectangle' | 'ellipse' } {
+  return shape?.type === 'rectangle' || shape?.type === 'ellipse';
+}
+
 export default function AnnotationLayerComponent({
   layer,
   shapes,
@@ -33,7 +38,8 @@ export default function AnnotationLayerComponent({
 
     if (selectedShapeId && isActiveLayer) {
       const node = l.findOne(`#${selectedShapeId}`);
-      if (node) {
+      const shape = shapes.find((s) => s.id === selectedShapeId);
+      if (node && isTransformable(shape)) {
         tr.nodes([node]);
       } else {
         tr.nodes([]);
@@ -70,22 +76,27 @@ export default function AnnotationLayerComponent({
             const nodes = tr.nodes();
             nodes.forEach((node) => {
               const shapeId = node.id();
-              onShapeChange(shapeId, {
-                x: node.x(),
-                y: node.y(),
-                width: node.width() * node.scaleX(),
-                height: node.height() * node.scaleY(),
-              } as Partial<Shape>);
+              const shape = shapes.find((s) => s.id === shapeId);
+              if (!shape) return;
+
+              if (shape.type === 'rectangle') {
+                onShapeChange(shapeId, {
+                  x: node.x(),
+                  y: node.y(),
+                  width: node.width() * node.scaleX(),
+                  height: node.height() * node.scaleY(),
+                } as Partial<Shape>);
+              } else if (shape.type === 'ellipse') {
+                onShapeChange(shapeId, {
+                  x: node.x(),
+                  y: node.y(),
+                  radiusX: (node.width() * node.scaleX()) / 2,
+                  radiusY: (node.height() * node.scaleY()) / 2,
+                } as Partial<Shape>);
+              }
+
               node.scaleX(1);
               node.scaleY(1);
-            });
-          }}
-          onDragEnd={() => {
-            const tr = transformerRef.current;
-            if (!tr) return;
-            const nodes = tr.nodes();
-            nodes.forEach((node) => {
-              onShapeChange(node.id(), { x: node.x(), y: node.y() } as Partial<Shape>);
             });
           }}
         />

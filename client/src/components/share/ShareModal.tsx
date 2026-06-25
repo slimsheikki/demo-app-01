@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useProjectStore } from '../../store/projectStore';
+import { useUploadStore } from '../../store/uploadStore';
 import { createProject, updateProject, createShareToken } from '../../utils/api';
 
 interface Props {
@@ -8,6 +9,7 @@ interface Props {
 
 export default function ShareModal({ onClose }: Props) {
   const { project, setProjectId } = useProjectStore();
+  const uploadPending = useUploadStore((s) => s.uploadPending);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,11 +69,15 @@ export default function ShareModal({ onClose }: Props) {
           Generate a link your collaborator can open in their browser. They'll see the image with all annotation layers they can toggle on and off.
         </p>
 
+        {uploadPending && (
+          <p className="text-amber-400 text-sm mb-3">Uploading image, please wait…</p>
+        )}
+
         {!shareUrl ? (
           <button
             onClick={generate}
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 text-white py-2.5 rounded-lg font-medium transition-colors"
+            disabled={loading || uploadPending}
+            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed text-white py-2.5 rounded-lg font-medium transition-colors"
           >
             {loading ? 'Generating…' : 'Generate share link'}
           </button>
