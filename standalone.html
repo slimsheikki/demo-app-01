@@ -315,6 +315,19 @@
     border-color: #fff;
     box-shadow: 0 0 0 2px var(--accent-glow), 0 1px 4px rgba(0,0,0,0.3);
   }
+  .swatch-picker {
+    background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red) !important;
+    position: relative;
+    overflow: hidden;
+  }
+  .swatch-picker::after {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.28);
+    pointer-events: none;
+  }
 
   .size-btn {
     width: 30px;
@@ -450,7 +463,10 @@
     color: var(--txt-dim);
     border-bottom: 1px solid rgba(255,255,255,0.07);
     flex-shrink: 0;
+    cursor: grab;
+    user-select: none;
   }
+  #layersPanelHeader:active { cursor: grabbing; }
 
   #layersList { overflow-y: auto; flex: 1; }
 
@@ -879,9 +895,40 @@
         DRAW_COLOR = color;
         swatchesEl.querySelectorAll('.swatch').forEach(function (s) { s.classList.remove('active'); });
         sw.classList.add('active');
+        setTool('draw');
+        showPalette();
       });
       swatchesEl.appendChild(sw);
     });
+
+    // Color picker swatch (last in row)
+    var colorPickerInput = document.createElement('input');
+    colorPickerInput.type = 'color';
+    colorPickerInput.style.cssText = 'position:absolute;width:0;height:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(colorPickerInput);
+
+    var pickerSwatch = document.createElement('button');
+    pickerSwatch.className = 'swatch swatch-picker';
+    pickerSwatch.setAttribute('aria-label', 'Custom color picker');
+    pickerSwatch.addEventListener('click', function () {
+      colorPickerInput.value = DRAW_COLOR.startsWith('#') ? DRAW_COLOR : '#FF6B6B';
+      colorPickerInput.click();
+    });
+    colorPickerInput.addEventListener('input', function () {
+      DRAW_COLOR = colorPickerInput.value;
+      swatchesEl.querySelectorAll('.swatch').forEach(function (s) { s.classList.remove('active'); });
+      pickerSwatch.classList.add('active');
+      pickerSwatch.style.background = DRAW_COLOR;
+      setTool('draw');
+      showPalette();
+    });
+    colorPickerInput.addEventListener('change', function () {
+      DRAW_COLOR = colorPickerInput.value;
+      swatchesEl.querySelectorAll('.swatch').forEach(function (s) { s.classList.remove('active'); });
+      pickerSwatch.classList.add('active');
+      pickerSwatch.style.background = DRAW_COLOR;
+    });
+    swatchesEl.appendChild(pickerSwatch);
 
     document.getElementById('sizes').querySelectorAll('.size-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -1210,6 +1257,50 @@
       if (prevToolBeforeSpace && prevToolBeforeSpace !== 'pan') setTool(prevToolBeforeSpace);
       prevToolBeforeSpace = null;
     });
+
+    // ---- Draggable layers panel ----
+    (function () {
+      var header = document.getElementById('layersPanelHeader');
+      var panel = layersPanel;
+      var dragging = false, startX, startY, startLeft, startTop;
+
+      function initPanelPosition() {
+        if (panel.style.left) return; // already positioned by drag
+        var r = panel.getBoundingClientRect();
+        panel.style.left = r.left + 'px';
+        panel.style.top = r.top + 'px';
+        panel.style.right = 'auto';
+        panel.style.transform = 'none';
+      }
+
+      header.addEventListener('pointerdown', function (e) {
+        if (e.button !== 0) return;
+        initPanelPosition();
+        dragging = true;
+        startX = e.clientX;
+        startY = e.clientY;
+        startLeft = parseFloat(panel.style.left);
+        startTop = parseFloat(panel.style.top);
+        header.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+
+      header.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        var dx = e.clientX - startX;
+        var dy = e.clientY - startY;
+        var newLeft = startLeft + dx;
+        var newTop = startTop + dy;
+        // Clamp inside the viewport
+        newLeft = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, newLeft));
+        newTop = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, newTop));
+        panel.style.left = newLeft + 'px';
+        panel.style.top = newTop + 'px';
+      });
+
+      header.addEventListener('pointerup', function () { dragging = false; });
+      header.addEventListener('pointercancel', function () { dragging = false; });
+    })();
 
     // Auto-grow textarea (fallback for browsers without field-sizing: content)
     commentInput.addEventListener('input', function () {
