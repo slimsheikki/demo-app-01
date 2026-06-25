@@ -1361,15 +1361,23 @@
     // ---- Layers panel ----
     function renderLayersPanel() {
       if (annotations.length === 0) { layersPanel.classList.remove('show'); return; }
-      layersPanel.classList.add('show');
       if (!layersPanelPositioned) {
         layersPanelPositioned = true;
         layersAttachedToColorPicker = true;
-        var cpRect = document.getElementById('colorPicker').getBoundingClientRect();
-        layersPanel.style.top = (cpRect.bottom + 8) + 'px';
-        layersPanel.style.left = cpRect.left + 'px';
-        layersPanel.style.right = 'auto';
-        layersPanel.style.transform = 'none';
+        var cpEl = document.getElementById('colorPicker');
+        // Defer getBoundingClientRect until layout is settled after renderRecents() may have changed picker height
+        requestAnimationFrame(function () {
+          var cpRect = cpEl.getBoundingClientRect();
+          var top = (cpRect.bottom > 0 ? cpRect.bottom : 16 + (cpEl.offsetHeight || 300)) + 8;
+          var left = cpRect.left > 0 ? cpRect.left : (window.innerWidth - 16 - 220);
+          layersPanel.style.top = top + 'px';
+          layersPanel.style.left = left + 'px';
+          layersPanel.style.right = 'auto';
+          layersPanel.style.transform = 'none';
+          layersPanel.classList.add('show');
+        });
+      } else {
+        layersPanel.classList.add('show');
       }
       layersList.innerHTML = '';
       for (var i = annotations.length - 1; i >= 0; i--) {
