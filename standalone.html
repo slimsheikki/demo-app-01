@@ -1510,6 +1510,23 @@
       prevToolBeforeSpace = null;
     });
 
+    // Middle mouse button — hold to pan, release to restore tool
+    var middlePanning = false;
+    var prevToolBeforeMiddle = null;
+    window.addEventListener('mousedown', function (e) {
+      if (e.button !== 1 || !imageNode || middlePanning) return;
+      e.preventDefault();
+      middlePanning = true;
+      prevToolBeforeMiddle = currentTool;
+      if (currentTool !== 'pan') setTool('pan');
+    });
+    window.addEventListener('mouseup', function (e) {
+      if (e.button !== 1 || !middlePanning) return;
+      middlePanning = false;
+      if (prevToolBeforeMiddle && prevToolBeforeMiddle !== 'pan') setTool(prevToolBeforeMiddle);
+      prevToolBeforeMiddle = null;
+    });
+
     // ---- Draggable layers panel ----
     (function () {
       var header = document.getElementById('layersPanelHeader');
