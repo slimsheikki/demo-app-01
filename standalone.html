@@ -865,6 +865,7 @@
     var MAX_RECENTS = 8;
     var renderRecents = null; // assigned by color picker IIFE
     var layersPanelPositioned = false;
+    var layersAttachedToColorPicker = false;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -1189,6 +1190,11 @@
           var nl=Math.max(0,Math.min(window.innerWidth-colorPickerEl.offsetWidth,sl+e.clientX-sx));
           var nt=Math.max(0,Math.min(window.innerHeight-colorPickerEl.offsetHeight,st+e.clientY-sy));
           colorPickerEl.style.left=nl+'px';colorPickerEl.style.top=nt+'px';
+          if(layersAttachedToColorPicker&&layersPanel.classList.contains('show')){
+            layersPanel.style.left=nl+'px';
+            layersPanel.style.top=(nt+colorPickerEl.offsetHeight+8)+'px';
+            layersPanel.style.right='auto';
+          }
         });
         hdr.addEventListener('pointerup',function(){drag=false;});
         hdr.addEventListener('pointercancel',function(){drag=false;});
@@ -1358,10 +1364,11 @@
       layersPanel.classList.add('show');
       if (!layersPanelPositioned) {
         layersPanelPositioned = true;
+        layersAttachedToColorPicker = true;
         var cpRect = document.getElementById('colorPicker').getBoundingClientRect();
         layersPanel.style.top = (cpRect.bottom + 8) + 'px';
-        layersPanel.style.right = '16px';
-        layersPanel.style.left = 'auto';
+        layersPanel.style.left = cpRect.left + 'px';
+        layersPanel.style.right = 'auto';
         layersPanel.style.transform = 'none';
       }
       layersList.innerHTML = '';
@@ -1527,47 +1534,61 @@
       prevToolBeforeMiddle = null;
     });
 
-    // ---- Draggable layers panel ----
+    // ---- Draggable layers panel (with snap-dock to color picker) ----
     (function () {
       var header = document.getElementById('layersPanelHeader');
       var panel = layersPanel;
       var dragging = false, startX, startY, startLeft, startTop;
-
-      function initPanelPosition() {
-        if (panel.style.left) return; // already positioned by drag
-        var r = panel.getBoundingClientRect();
-        panel.style.left = r.left + 'px';
-        panel.style.top = r.top + 'px';
-        panel.style.right = 'auto';
-        panel.style.transform = 'none';
-      }
+      var SNAP_THRESHOLD = 48; // px — how close to picker bottom triggers re-attach
 
       header.addEventListener('pointerdown', function (e) {
         if (e.button !== 0) return;
-        initPanelPosition();
+        // Detach from color picker on grab
+        layersAttachedToColorPicker = false;
+        // Convert current position to explicit left/top
+        var r = panel.getBoundingClientRect();
+        startLeft = r.left;
+        startTop = r.top;
+        panel.style.left = startLeft + 'px';
+        panel.style.top = startTop + 'px';
+        panel.style.right = 'auto';
+        panel.style.transform = 'none';
         dragging = true;
         startX = e.clientX;
         startY = e.clientY;
-        startLeft = parseFloat(panel.style.left);
-        startTop = parseFloat(panel.style.top);
         header.setPointerCapture(e.pointerId);
         e.preventDefault();
       });
 
       header.addEventListener('pointermove', function (e) {
         if (!dragging) return;
-        var dx = e.clientX - startX;
-        var dy = e.clientY - startY;
-        var newLeft = startLeft + dx;
-        var newTop = startTop + dy;
-        // Clamp inside the viewport
-        newLeft = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, newLeft));
-        newTop = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, newTop));
+        var newLeft = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, startLeft + e.clientX - startX));
+        var newTop  = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, startTop + e.clientY - startY));
         panel.style.left = newLeft + 'px';
-        panel.style.top = newTop + 'px';
+        panel.style.top  = newTop + 'px';
       });
 
-      header.addEventListener('pointerup', function () { dragging = false; });
+      header.addEventListener('pointerup', function () {
+        if (!dragging) return;
+        dragging = false;
+        // Snap-dock check: is the layers panel close enough to the color picker's bottom?
+        var cpEl = document.getElementById('colorPicker');
+        var cpRect = cpEl.getBoundingClientRect();
+        var lpRect = panel.getBoundingClientRect();
+        var vertGap = Math.abs(lpRect.top - (cpRect.bottom + 8));
+        var horizOff = Math.abs(lpRect.left - cpRect.left);
+        if (vertGap < SNAP_THRESHOLD && horizOff < SNAP_THRESHOLD) {
+          // Attach and snap into place
+          layersAttachedToColorPicker = true;
+          var cpLeft = parseFloat(cpEl.style.left);
+          if (isNaN(cpLeft)) cpLeft = cpRect.left;
+          var cpTop = parseFloat(cpEl.style.top);
+          if (isNaN(cpTop)) cpTop = cpRect.top;
+          panel.style.left = cpLeft + 'px';
+          panel.style.top  = (cpTop + cpEl.offsetHeight + 8) + 'px';
+        }
+      });
+
       header.addEventListener('pointercancel', function () { dragging = false; });
     })();
 
