@@ -6,97 +6,357 @@
   <title>Annotation Tool</title>
   <script src="https://cdn.jsdelivr.net/npm/konva@9/konva.min.js"></script>
   <style>
+    /* ── Reset & tokens ── */
     *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
-    /* ── Toolbar ── */
-    #toolbar{display:flex;align-items:center;gap:3px;padding:5px 8px;background:#1e1e1e;border-bottom:1px solid #333;overflow-x:auto;flex-shrink:0;-webkit-overflow-scrolling:touch}
-    .tbtn{background:#2a2a2a;border:1.5px solid transparent;border-radius:6px;color:#bbb;cursor:pointer;font-size:15px;padding:6px 8px;min-width:34px;text-align:center;touch-action:manipulation;flex-shrink:0;-webkit-tap-highlight-color:transparent}
-    .tbtn:active,.tbtn.on{border-color:#4a9eff;color:#fff;background:#1a3a60}
-    .sep{width:1px;height:26px;background:#333;flex-shrink:0;margin:0 2px}
-    .swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0;touch-action:manipulation}
+    :root{
+      --bg0:#1a1a1a;--bg1:#252525;--bg2:#2e2e2e;--bg3:#383838;
+      --bd:#3a3a3a;--txt:#c0c0c0;--txt2:#787878;--acc:#0070d8;
+      --canvas-bg:#505050;
+    }
+    body{
+      background:var(--bg0);color:var(--txt);
+      font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+      height:100dvh;display:flex;flex-direction:column;overflow:hidden;
+      user-select:none;font-size:11px;
+    }
+
+    /* ── Menu bar ── */
+    #menubar{
+      height:28px;background:var(--bg1);border-bottom:1px solid var(--bd);
+      display:flex;align-items:center;padding:0 8px;gap:6px;flex-shrink:0;
+    }
+    #apptitle{font-size:12px;font-weight:600;color:var(--txt2);letter-spacing:.04em;flex:1;white-space:nowrap}
+    .mbtn{
+      background:var(--bg2);border:1px solid var(--bd);border-radius:3px;
+      color:var(--txt);cursor:pointer;font-size:11px;padding:3px 9px;
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent;white-space:nowrap;
+      flex-shrink:0;
+    }
+    .mbtn:hover{background:var(--bg3)}
+    .mbtn:active{border-color:var(--acc)}
+    #openBtn{background:var(--acc);border-color:var(--acc);color:#fff}
+    #openBtn:hover{background:#005bbf;border-color:#005bbf}
+
+    /* ── Options bar ── */
+    #optbar{
+      height:32px;background:var(--bg1);border-bottom:1px solid var(--bd);
+      display:flex;align-items:center;padding:0 8px;gap:5px;flex-shrink:0;
+      overflow-x:auto;-webkit-overflow-scrolling:touch;
+    }
+    .swatch{
+      width:16px;height:16px;border-radius:50%;cursor:pointer;
+      border:1.5px solid transparent;flex-shrink:0;touch-action:manipulation;
+    }
     .swatch.on{border-color:#fff}
-    #cpick{width:26px;height:26px;border-radius:4px;border:none;cursor:pointer;padding:0;background:none;flex-shrink:0}
-    #swid{width:70px;accent-color:#4a9eff;flex-shrink:0}
-    #openBtn{background:#4a9eff;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;padding:6px 10px;white-space:nowrap;touch-action:manipulation;margin-left:auto;flex-shrink:0}
-    /* ── Main ── */
-    #main{display:flex;flex:1;overflow:hidden}
-    #cwrap{flex:1;overflow:hidden;background:#0a0a0a;display:flex;align-items:center;justify-content:center;position:relative}
+    .swatch:not(.on):hover{border-color:var(--txt2)}
+    #cpick{
+      width:20px;height:20px;border-radius:3px;border:1px solid var(--bd);
+      cursor:pointer;padding:0;background:none;flex-shrink:0;
+    }
+    .osep{width:1px;height:18px;background:var(--bd);flex-shrink:0;margin:0 3px}
+    .olbl{color:var(--txt2);font-size:10px;letter-spacing:.04em;flex-shrink:0}
+    #swid,#sopa{accent-color:var(--acc);flex-shrink:0;cursor:pointer}
+    #swid{width:72px}
+    #sopa{width:60px}
+    .oval{
+      color:var(--txt);font-size:10px;min-width:20px;text-align:right;
+      flex-shrink:0;font-variant-numeric:tabular-nums;
+    }
+
+    /* ── Workspace ── */
+    #workspace{display:flex;flex:1;overflow:hidden;min-height:0}
+
+    /* ── Tool panel (left) ── */
+    #toolpanel{
+      width:40px;background:var(--bg1);border-right:1px solid var(--bd);
+      display:flex;flex-direction:column;align-items:center;
+      padding:4px 0 6px;gap:2px;flex-shrink:0;
+    }
+    .tbtn{
+      width:34px;height:32px;background:transparent;border:1px solid transparent;
+      border-radius:3px;color:var(--txt2);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+      position:relative;flex-shrink:0;
+    }
+    .tbtn:hover{background:var(--bg2);color:var(--txt)}
+    .tbtn.on{background:var(--bg3);color:var(--txt);border-color:var(--bd)}
+    .tbtn.on::before{
+      content:'';position:absolute;left:0;top:5px;bottom:5px;
+      width:2px;background:var(--acc);border-radius:0 1px 1px 0;
+    }
+    .tbtn svg{pointer-events:none}
+    #tpsep{flex:1}
+    #fgswatch{
+      width:22px;height:22px;border-radius:3px;border:2px solid var(--bd);
+      cursor:pointer;flex-shrink:0;touch-action:manipulation;
+    }
+    #fgswatch:hover{border-color:var(--txt2)}
+
+    /* ── Canvas area ── */
+    #cwrap{
+      flex:1;overflow:hidden;background:var(--canvas-bg);
+      display:flex;align-items:center;justify-content:center;position:relative;
+    }
+
     /* ── Drop zone ── */
-    #dz{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#555;gap:10px;font-size:14px;cursor:pointer}
-    #dz .ico{font-size:52px}
+    #dz{
+      position:absolute;inset:0;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;color:var(--txt2);
+      gap:8px;cursor:pointer;
+    }
+    #dz .ico{font-size:44px;opacity:.4}
+    #dz .dzlabel{font-size:13px}
+    #dz .dzsub{font-size:11px;color:#4a4a4a}
     #dz.hide{display:none}
-    #errmsg{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;display:none;z-index:99;white-space:nowrap}
-    #loadmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);font-size:15px;color:#ccc;z-index:98}
-    /* ── Layers ── */
-    #lp{width:170px;background:#191919;border-left:1px solid #2a2a2a;display:flex;flex-direction:column;flex-shrink:0}
-    #lhdr{padding:7px 10px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em}
-    #addL{background:#2a2a2a;border:none;border-radius:4px;color:#ccc;cursor:pointer;font-size:18px;line-height:1.2;padding:0 5px;touch-action:manipulation}
-    #ll{flex:1;overflow-y:auto}
-    .lr{display:flex;align-items:center;gap:5px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #222;font-size:13px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-    .lr.on{background:#1a3a60}
-    .lr:not(.on):active{background:#222}
-    .lvis{background:none;border:none;color:#777;cursor:pointer;font-size:13px;padding:0;line-height:1;touch-action:manipulation;flex-shrink:0}
-    .lvis.off{color:#3a3a3a}
-    .lnm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-    /* ── Text overlay ── */
+
+    /* ── Feedback overlays ── */
+    #errmsg{
+      position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+      background:#a02020;color:#fff;padding:6px 14px;border-radius:4px;
+      font-size:12px;display:none;z-index:99;white-space:nowrap;pointer-events:none;
+    }
+    #loadmsg{
+      position:absolute;inset:0;display:none;align-items:center;
+      justify-content:center;background:rgba(0,0,0,.5);
+      font-size:13px;color:var(--txt);z-index:98;
+    }
+
+    /* ── Text input overlay ── */
     #txtwrap{position:absolute;display:none;z-index:50}
-    #txtin{background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.35);border-radius:4px;color:#fff;outline:none;padding:3px 6px;min-width:110px;font-family:sans-serif}
-    /* ── Opacity slider ── */
-    #sopa{width:60px;accent-color:#4a9eff;flex-shrink:0}
-    @media(max-width:500px){#lp{width:130px}#swid{width:55px}#sopa{width:45px}.tbtn{padding:5px 6px;min-width:30px}}
+    #txtin{
+      background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.28);
+      border-radius:3px;color:#fff;outline:none;
+      padding:3px 6px;min-width:100px;font-family:sans-serif;
+    }
+
+    /* ── Panels (right) ── */
+    #panels{
+      width:200px;background:var(--bg1);border-left:1px solid var(--bd);
+      display:flex;flex-direction:column;flex-shrink:0;
+    }
+    #lhdr{
+      height:28px;padding:0 8px;border-bottom:1px solid var(--bd);
+      display:flex;align-items:center;justify-content:space-between;
+      font-size:10px;font-weight:700;color:var(--txt2);
+      text-transform:uppercase;letter-spacing:.08em;flex-shrink:0;
+    }
+    #addL{
+      background:var(--bg2);border:1px solid var(--bd);border-radius:3px;
+      color:var(--txt);cursor:pointer;font-size:14px;line-height:1;
+      padding:0 5px 1px;touch-action:manipulation;
+    }
+    #addL:hover{background:var(--bg3);color:#fff}
+    #ll{flex:1;overflow-y:auto}
+    #ll::-webkit-scrollbar{width:5px}
+    #ll::-webkit-scrollbar-track{background:var(--bg1)}
+    #ll::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
+    .lr{
+      height:28px;display:flex;align-items:center;gap:6px;
+      padding:0 8px;cursor:pointer;border-bottom:1px solid var(--bd);
+      touch-action:manipulation;-webkit-tap-highlight-color:transparent;
+      position:relative;
+    }
+    .lr.on{background:var(--bg3)}
+    .lr.on::before{
+      content:'';position:absolute;left:0;top:4px;bottom:4px;
+      width:2px;background:var(--acc);
+    }
+    .lr:not(.on):hover{background:var(--bg2)}
+    .lvis{
+      background:none;border:none;color:var(--txt2);cursor:pointer;
+      padding:0;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+      touch-action:manipulation;width:18px;height:18px;
+    }
+    .lvis:hover{color:var(--txt)}
+    .lvis.off{color:#444}
+    .lnm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+
+    /* ── Mobile tool strip ── */
+    #toolstrip{
+      display:none;height:44px;background:var(--bg1);
+      border-top:1px solid var(--bd);
+      overflow-x:auto;-webkit-overflow-scrolling:touch;
+      flex-shrink:0;align-items:center;padding:0 6px;gap:2px;
+    }
+    #toolstrip .tbtn{width:40px;height:38px;flex-shrink:0}
+    #toolstrip .tbtn.on::before{
+      left:8px;right:8px;width:auto;
+      top:auto;bottom:0;height:2px;
+      border-radius:1px 1px 0 0;
+    }
+
+    /* ── Status bar ── */
+    #statusbar{
+      height:20px;background:var(--bg0);border-top:1px solid var(--bd);
+      display:flex;align-items:center;padding:0 8px;
+      justify-content:space-between;flex-shrink:0;
+    }
+    #statusbar span{font-size:10px;color:var(--txt2)}
+
+    /* ── Mobile breakpoint ── */
+    @media(max-width:560px){
+      #toolpanel{display:none}
+      #toolstrip{display:flex}
+      #panels{width:130px}
+      #swid{width:52px}
+      #sopa{width:44px}
+    }
+    @media(max-width:380px){
+      #panels{display:none}
+    }
   </style>
 </head>
 <body>
-<div id="toolbar">
-  <button class="tbtn on" data-tool="pencil" title="Pencil (P)">✏️</button>
-  <button class="tbtn" data-tool="rectangle" title="Rectangle (R)">▭</button>
-  <button class="tbtn" data-tool="ellipse" title="Ellipse (E)">⬭</button>
-  <button class="tbtn" data-tool="arrow" title="Arrow (A)">↗</button>
-  <button class="tbtn" data-tool="text" title="Text (T)">T</button>
-  <button class="tbtn" data-tool="select" title="Select (V)">↖</button>
-  <button class="tbtn" data-tool="eraser" title="Eraser (X)">⌫</button>
 
-  <div class="sep"></div>
+<!-- ── SVG icon symbols ── -->
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <symbol id="ico-select" viewBox="0 0 15 15">
+      <path d="M2.5 1.5 L2.5 12 L5.2 9.3 L7.1 13.8 L8.6 13.1 L6.7 8.7 L10.2 8.7 Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="ico-pencil" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.5 2 L13 4.5 L5 12.5 L2 13 L2.5 10 Z"/>
+      <line x1="9" y1="3.5" x2="11.5" y2="6"/>
+    </symbol>
+    <symbol id="ico-rect" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3">
+      <rect x="2" y="3.5" width="11" height="8"/>
+    </symbol>
+    <symbol id="ico-ellipse" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3">
+      <ellipse cx="7.5" cy="7.5" rx="5.5" ry="4"/>
+    </symbol>
+    <symbol id="ico-arrow" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="3" y1="12" x2="11.5" y2="3.5"/>
+      <polyline points="6.5,3.5 11.5,3.5 11.5,8.5"/>
+    </symbol>
+    <symbol id="ico-text" viewBox="0 0 15 15" fill="currentColor">
+      <rect x="2" y="2.5" width="11" height="1.8"/>
+      <rect x="6.6" y="2.5" width="1.8" height="10"/>
+    </symbol>
+    <symbol id="ico-eraser" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="5" width="11" height="7" rx="1"/>
+      <line x1="2" y1="9" x2="13" y2="9"/>
+    </symbol>
+    <symbol id="ico-eye-on" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+      <path d="M1 7 C3 3.5 11 3.5 13 7 C11 10.5 3 10.5 1 7 Z"/>
+      <circle cx="7" cy="7" r="1.8"/>
+    </symbol>
+    <symbol id="ico-eye-off" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+      <path d="M1 7 C3 3.5 11 3.5 13 7 C11 10.5 3 10.5 1 7 Z"/>
+      <circle cx="7" cy="7" r="1.8"/>
+      <line x1="2.5" y1="2.5" x2="11.5" y2="11.5"/>
+    </symbol>
+  </defs>
+</svg>
 
-  <div class="swatch on" style="background:#ff3b30" data-c="#ff3b30"></div>
-  <div class="swatch" style="background:#ff9500" data-c="#ff9500"></div>
-  <div class="swatch" style="background:#ffcc00" data-c="#ffcc00"></div>
-  <div class="swatch" style="background:#30d158" data-c="#30d158"></div>
-  <div class="swatch" style="background:#0a84ff" data-c="#0a84ff"></div>
-  <div class="swatch" style="background:#bf5af2" data-c="#bf5af2"></div>
-  <div class="swatch" style="background:#ffffff;border-color:#444" data-c="#ffffff"></div>
-  <input type="color" id="cpick" value="#ff3b30" title="Custom colour">
-
-  <div class="sep"></div>
-
-  <input type="range" id="swid" min="1" max="30" value="3" title="Stroke width">
-  <input type="range" id="sopa" min="10" max="100" value="100" title="Opacity">
-
-  <div class="sep"></div>
-
-  <button class="tbtn" id="undoBtn" title="Undo (Cmd/Ctrl+Z)">↩</button>
-
-  <button id="openBtn">📂 Open image</button>
+<!-- ── Menu bar ── -->
+<div id="menubar">
+  <span id="apptitle">Annotation</span>
+  <button class="mbtn" id="undoBtn" title="Undo (Cmd/Ctrl+Z)">Undo</button>
+  <button class="mbtn" id="openBtn">Open Image…</button>
   <input type="file" id="fi" accept="image/*" style="display:none">
 </div>
 
-<div id="main">
+<!-- ── Options bar ── -->
+<div id="optbar">
+  <div class="swatch on" style="background:#ff3b30" data-c="#ff3b30" title="Red"></div>
+  <div class="swatch" style="background:#ff9500" data-c="#ff9500" title="Orange"></div>
+  <div class="swatch" style="background:#ffcc00" data-c="#ffcc00" title="Yellow"></div>
+  <div class="swatch" style="background:#30d158" data-c="#30d158" title="Green"></div>
+  <div class="swatch" style="background:#0a84ff" data-c="#0a84ff" title="Blue"></div>
+  <div class="swatch" style="background:#bf5af2" data-c="#bf5af2" title="Purple"></div>
+  <div class="swatch" style="background:#ffffff;border-color:var(--bd)" data-c="#ffffff" title="White"></div>
+  <input type="color" id="cpick" value="#ff3b30" title="Custom colour">
+  <div class="osep"></div>
+  <span class="olbl">SW</span>
+  <input type="range" id="swid" min="1" max="30" value="3" title="Stroke width">
+  <span class="oval" id="swval">3</span>
+  <div class="osep"></div>
+  <span class="olbl">OP</span>
+  <input type="range" id="sopa" min="10" max="100" value="100" title="Opacity">
+  <span class="oval" id="opval">100%</span>
+</div>
+
+<!-- ── Workspace ── -->
+<div id="workspace">
+
+  <!-- Left tool panel -->
+  <div id="toolpanel">
+    <button class="tbtn" data-tool="select" title="Select (V)">
+      <svg width="15" height="15"><use href="#ico-select"/></svg>
+    </button>
+    <button class="tbtn on" data-tool="pencil" title="Pencil (P)">
+      <svg width="15" height="15"><use href="#ico-pencil"/></svg>
+    </button>
+    <button class="tbtn" data-tool="rectangle" title="Rectangle (R)">
+      <svg width="15" height="15"><use href="#ico-rect"/></svg>
+    </button>
+    <button class="tbtn" data-tool="ellipse" title="Ellipse (E)">
+      <svg width="15" height="15"><use href="#ico-ellipse"/></svg>
+    </button>
+    <button class="tbtn" data-tool="arrow" title="Arrow (A)">
+      <svg width="15" height="15"><use href="#ico-arrow"/></svg>
+    </button>
+    <button class="tbtn" data-tool="text" title="Text (T)">
+      <svg width="15" height="15"><use href="#ico-text"/></svg>
+    </button>
+    <button class="tbtn" data-tool="eraser" title="Eraser (X)">
+      <svg width="15" height="15"><use href="#ico-eraser"/></svg>
+    </button>
+    <div id="tpsep"></div>
+    <div id="fgswatch" style="background:#ff3b30" title="Foreground color (click to change)"></div>
+  </div>
+
+  <!-- Canvas area -->
   <div id="cwrap">
     <div id="dz">
       <div class="ico">🖼️</div>
-      <div>Drop an image here</div>
-      <div style="font-size:12px;color:#444">or tap "Open image"</div>
+      <div class="dzlabel">Drop an image here</div>
+      <div class="dzsub">or tap "Open Image…"</div>
     </div>
-    <div id="loadmsg">Loading image…</div>
+    <div id="loadmsg">Loading…</div>
     <div id="errmsg"></div>
     <div id="kc"></div>
     <div id="txtwrap"><input id="txtin" type="text" placeholder="Type text…"></div>
   </div>
 
-  <div id="lp">
+  <!-- Right panels -->
+  <div id="panels">
     <div id="lhdr">Layers <button id="addL" title="Add layer">+</button></div>
     <div id="ll"></div>
   </div>
+
+</div>
+
+<!-- ── Mobile tool strip (≤560px) ── -->
+<div id="toolstrip">
+  <button class="tbtn" data-tool="select" title="Select">
+    <svg width="15" height="15"><use href="#ico-select"/></svg>
+  </button>
+  <button class="tbtn on" data-tool="pencil" title="Pencil">
+    <svg width="15" height="15"><use href="#ico-pencil"/></svg>
+  </button>
+  <button class="tbtn" data-tool="rectangle" title="Rectangle">
+    <svg width="15" height="15"><use href="#ico-rect"/></svg>
+  </button>
+  <button class="tbtn" data-tool="ellipse" title="Ellipse">
+    <svg width="15" height="15"><use href="#ico-ellipse"/></svg>
+  </button>
+  <button class="tbtn" data-tool="arrow" title="Arrow">
+    <svg width="15" height="15"><use href="#ico-arrow"/></svg>
+  </button>
+  <button class="tbtn" data-tool="text" title="Text">
+    <svg width="15" height="15"><use href="#ico-text"/></svg>
+  </button>
+  <button class="tbtn" data-tool="eraser" title="Eraser">
+    <svg width="15" height="15"><use href="#ico-eraser"/></svg>
+  </button>
+</div>
+
+<!-- ── Status bar ── -->
+<div id="statusbar">
+  <span id="statusTool">Pencil</span>
+  <span id="statusDims"></span>
 </div>
 
 <script>
@@ -111,6 +371,8 @@ let curNode = null, curData = null;
 let selNode = null;
 let txtPos = null;
 const ERASE_R = 24;
+
+const TOOL_NAMES = {select:'Select',pencil:'Pencil',rectangle:'Rectangle',ellipse:'Ellipse',arrow:'Arrow',text:'Text',eraser:'Eraser'};
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 const uid = () => Math.random().toString(36).slice(2,10);
@@ -168,7 +430,6 @@ function showErr(msg) {
 
 function loadFile(file) {
   if (!file) return;
-  // Accept any file — let the browser decide if it can render it
   const loadEl = document.getElementById('loadmsg');
   loadEl.style.display = 'flex';
 
@@ -185,6 +446,7 @@ function loadFile(file) {
       if (!imgW || !imgH) { showErr('Could not read image dimensions.'); return; }
       shapeMap = {}; layers = []; undoStack = []; selNode = null; activeId = null;
       document.getElementById('dz').classList.add('hide');
+      document.getElementById('statusDims').textContent = imgW + ' × ' + imgH;
       initStage(imgW, imgH);
       imgLayer.add(new Konva.Image({image:img, x:0, y:0, width:imgW, height:imgH}));
       imgLayer.draw();
@@ -201,7 +463,6 @@ function addLayer(name) {
   const id = uid();
   const kl = new Konva.Layer();
   stage.add(kl);
-  // Keep draw/tr on top
   drawLayer.moveToTop(); trLayer.moveToTop();
   const meta = {id, name: name || `Layer ${layers.length+1}`, visible:true, kl};
   layers.push(meta);
@@ -233,7 +494,10 @@ function renderLayers() {
 
     const vis = document.createElement('button');
     vis.className = 'lvis' + (l.visible?'':' off');
-    vis.textContent = l.visible ? '👁' : '○';
+    vis.title = l.visible ? 'Hide layer' : 'Show layer';
+    vis.innerHTML = l.visible
+      ? '<svg width="14" height="14"><use href="#ico-eye-on"/></svg>'
+      : '<svg width="14" height="14"><use href="#ico-eye-off"/></svg>';
     vis.onclick = e => { e.stopPropagation(); toggleVis(l.id); };
 
     const nm = document.createElement('div');
@@ -293,7 +557,6 @@ function pickNode(node, id) {
   else tr.nodes([]);
   trLayer.draw();
 
-  // Save position on drag end
   node.on('dragend.sel', () => {
     if (!shapeMap[id]) return;
     if (s.type==='text'||s.type==='rectangle'||s.type==='ellipse') {
@@ -497,10 +760,11 @@ document.querySelectorAll('.tbtn[data-tool]').forEach(b=>{
   b.addEventListener('click',()=>{
     tool=b.dataset.tool;
     document.querySelectorAll('.tbtn[data-tool]').forEach(x=>x.classList.remove('on'));
-    b.classList.add('on');
+    document.querySelectorAll(`.tbtn[data-tool="${tool}"]`).forEach(x=>x.classList.add('on'));
     if (tool!=='select') clearSel();
     const curs={pencil:'crosshair',rectangle:'crosshair',ellipse:'crosshair',arrow:'crosshair',text:'text',select:'default',eraser:'cell'};
     if (stage) stage.container().style.cursor=curs[tool]||'crosshair';
+    document.getElementById('statusTool').textContent = TOOL_NAMES[tool]||tool;
   });
 });
 
@@ -510,14 +774,29 @@ document.querySelectorAll('.swatch').forEach(s=>{
     document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
     s.classList.add('on');
     document.getElementById('cpick').value=color;
+    document.getElementById('fgswatch').style.background=color;
   });
 });
+
 document.getElementById('cpick').addEventListener('input',e=>{
   color=e.target.value;
   document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
+  document.getElementById('fgswatch').style.background=color;
 });
-document.getElementById('swid').addEventListener('input',e=>sw=+e.target.value);
-document.getElementById('sopa').addEventListener('input',e=>opacity=+e.target.value/100);
+
+document.getElementById('swid').addEventListener('input',e=>{
+  sw=+e.target.value;
+  document.getElementById('swval').textContent=sw;
+});
+
+document.getElementById('sopa').addEventListener('input',e=>{
+  opacity=+e.target.value/100;
+  document.getElementById('opval').textContent=Math.round(opacity*100)+'%';
+});
+
+document.getElementById('fgswatch').addEventListener('click',()=>{
+  document.getElementById('cpick').click();
+});
 
 document.getElementById('undoBtn').addEventListener('click',undo);
 document.getElementById('addL').addEventListener('click',()=>{ if(stage) addLayer(); });
