@@ -479,17 +479,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    cursor: text;
+    cursor: pointer;
     border-radius: 5px;
     padding: 2px 4px;
     margin: -2px -4px;
     outline: none;
     transition: background .12s ease;
   }
-  .layer-name[contenteditable="true"]:focus {
-    background: rgba(255,255,255,0.09);
-    white-space: normal;
-    word-break: break-word;
+  .layer-name:hover {
+    background: rgba(255,255,255,0.07);
   }
 
   .layer-delete {
@@ -695,6 +693,7 @@
     var DRAW_COLOR = '#FF6B6B';
     var DRAW_WIDTH = 4;
     var PALETTE = ['#FF6B6B', '#FF9F45', '#FFE066', '#4ADE80', '#5B9DFF', '#C77DFF', '#FFFFFF', '#1A1A1A'];
+    var editingAnnotation = null;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -736,15 +735,27 @@
       zoomTo(stage.scaleX() * factor, null);
     }
 
-    // Fit the image to the viewport and center it
+    // Fit the image to the viewport and center it. The top toolbar and the
+    // bottom zoom bar are horizontally centered, so they only constrain the
+    // image vertically — reserve their height so the image stays fully visible
+    // between them instead of slipping underneath.
     function fitToScreen() {
       if (!imageNode) return;
       var sw = stage.width(), sh = stage.height();
-      var scale = clamp(Math.min(sw / imgW, sh / imgH) * FIT_PADDING);
+      var gap = 14;
+      var topInset = 0, bottomInset = 0;
+      if (toolbar.classList.contains('show')) {
+        topInset = toolbar.getBoundingClientRect().bottom + gap;
+      }
+      if (controls.classList.contains('show')) {
+        bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
+      }
+      var availH = Math.max(40, sh - topInset - bottomInset);
+      var scale = clamp(Math.min(sw / imgW, availH / imgH) * FIT_PADDING);
       stage.scale({ x: scale, y: scale });
       stage.position({
         x: (sw - imgW * scale) / 2,
-        y: (sh - imgH * scale) / 2
+        y: topInset + (availH - imgH * scale) / 2
       });
       stage.batchDraw();
       updateZoomLabel();
@@ -912,6 +923,47 @@
       commentBox.classList.remove('show');
       commentInput.value = '';
       commentInput.style.height = '';
+      editingAnnotation = null;
+    }
+
+    function getAnnotationBBox(ann) {
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      ann.konvaLayer.find('Line').forEach(function (line) {
+        var pts = line.points();
+        for (var i = 0; i < pts.length; i += 2) {
+          minX = Math.min(minX, pts[i]);
+          maxX = Math.max(maxX, pts[i]);
+          minY = Math.min(minY, pts[i + 1]);
+          maxY = Math.max(maxY, pts[i + 1]);
+        }
+      });
+      if (!isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0, cx: 0, cy: 0 };
+      return { minX: minX, minY: minY, maxX: maxX, maxY: maxY,
+               cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 };
+    }
+
+    function openAnnotationComment(ann) {
+      editingAnnotation = ann;
+      var bbox = getAnnotationBBox(ann);
+      var sc = stage.scaleX();
+      var screenCX = bbox.cx * sc + stage.x();
+      var screenMaxY = bbox.maxY * sc + stage.y();
+      var cbW = Math.min(340, window.innerWidth - 40);
+      var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
+      var top = screenMaxY + 16;
+      if (top + 160 > window.innerHeight - 20) {
+        top = (bbox.minY * sc + stage.y()) - 176;
+      }
+      top = Math.max(16, top);
+      commentBox.style.left = left + 'px';
+      commentBox.style.top = top + 'px';
+      commentInput.value = ann.text || '';
+      commentInput.style.height = '';
+      if (ann.text) {
+        commentInput.style.height = Math.max(70, commentInput.scrollHeight) + 'px';
+      }
+      commentBox.classList.add('show');
+      commentInput.focus();
     }
 
     function discardStaging() {
@@ -935,36 +987,19 @@
       stagingLayer.moveToTop();
 
       // Move strokes from staging to the new annotation layer
-      var bbox = getStagingBBox();
       stagingStrokes.forEach(function (line) {
         line.remove();
+        line.listening(true);
         annLayer.add(line);
       });
       stagingStrokes = [];
 
-      // Add comment label if text was provided
-      if (text && text.trim()) {
-        var lx = bbox.maxX + 10;
-        var ly = bbox.minY;
-        var label = new Konva.Label({ x: lx, y: ly });
-        label.add(new Konva.Tag({
-          fill: 'rgba(0, 0, 0, 0.72)',
-          cornerRadius: 7,
-          stroke: 'rgba(255,255,255,0.14)',
-          strokeWidth: 1
-        }));
-        label.add(new Konva.Text({
-          text: text.trim(),
-          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-          fontSize: 12,
-          lineHeight: 1.5,
-          fill: 'rgba(255,255,255,0.92)',
-          padding: 9,
-          width: 220,        // wrap long comments instead of one endless line
-          wrap: 'word'
-        }));
-        annLayer.add(label);
-      }
+      // Click on any stroke in pan mode opens the comment box for this annotation
+      annLayer.on('click tap', function () {
+        if (currentTool !== 'pan') return;
+        var a = annotations.filter(function (x) { return x.konvaLayer === annLayer; })[0];
+        if (a) openAnnotationComment(a);
+      });
 
       annLayer.batchDraw();
       stagingLayer.batchDraw();
@@ -1004,16 +1039,10 @@
 
           var nameEl = document.createElement('span');
           nameEl.className = 'layer-name';
-          nameEl.textContent = ann.name;
-          nameEl.contentEditable = 'true';
-          nameEl.spellcheck = false;
-          nameEl.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
-          });
-          nameEl.addEventListener('blur', function () {
-            var v = this.textContent.trim();
-            ann.name = v || ann.name;
-            this.textContent = ann.name;
+          nameEl.title = ann.text || ann.name;
+          nameEl.textContent = ann.text || ann.name;
+          nameEl.addEventListener('click', function () {
+            openAnnotationComment(ann);
           });
 
           var del = document.createElement('button');
@@ -1083,13 +1112,32 @@
     document.getElementById('discardBtn').addEventListener('click', discardStaging);
 
     document.getElementById('commentConfirm').addEventListener('click', function () {
-      commitAnnotation(commentInput.value);
+      if (editingAnnotation) {
+        editingAnnotation.text = commentInput.value.trim();
+        hideCommentBox();
+        renderLayersPanel();
+      } else {
+        commitAnnotation(commentInput.value);
+      }
     });
-    document.getElementById('commentCancel').addEventListener('click', discardStaging);
+    document.getElementById('commentCancel').addEventListener('click', function () {
+      if (editingAnnotation) { hideCommentBox(); } else { discardStaging(); }
+    });
 
     commentInput.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape') { discardStaging(); return; }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { commitAnnotation(this.value); }
+      if (e.key === 'Escape') {
+        if (editingAnnotation) { hideCommentBox(); } else { discardStaging(); }
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (editingAnnotation) {
+          editingAnnotation.text = this.value.trim();
+          hideCommentBox();
+          renderLayersPanel();
+        } else {
+          commitAnnotation(this.value);
+        }
+      }
     });
 
     // Auto-grow textarea (fallback for browsers without field-sizing: content)
