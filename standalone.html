@@ -205,8 +205,6 @@
     padding: 0 4px;
     user-select: none;
   }
-  .divider { width: 1px; height: 22px; background: var(--glass-border); margin: 0 2px; }
-
   input[type="file"] { display: none; }
 
   /* ---- Draw-mode cursor ---- */
@@ -254,97 +252,6 @@
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
   }
   .tbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
-
-  /* ---- Draw options (color + brush size): drops down on hover/select of pencil ---- */
-  #drawOptions {
-    position: absolute;
-    left: 50%;
-    top: calc(max(16px, env(safe-area-inset-top, 16px)) + 56px);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 7px 11px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 13px;
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
-    z-index: 20;
-    user-select: none;
-    max-width: calc(100vw - 24px);
-    flex-wrap: wrap;
-    justify-content: center;
-    /* hidden resting state, tucked up behind the toolbar */
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transform: translateX(-50%) translateY(-12px);
-    /* retract: quick ease-in (the few-second grace before it fires lives in JS) */
-    transition: opacity .14s ease-in, transform .14s ease-in, visibility 0s linear .14s;
-  }
-  #drawOptions.show {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-    transform: translateX(-50%) translateY(0);
-    /* drop down: smooth, a touch slower than the retract */
-    transition: opacity .28s cubic-bezier(.2,.7,.2,1), transform .28s cubic-bezier(.2,.7,.2,1), visibility 0s;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    #drawOptions, #drawOptions.show {
-      transform: translateX(-50%);
-      transition: opacity .12s linear, visibility 0s;
-    }
-  }
-
-  .opt-group { display: flex; align-items: center; gap: 6px; }
-
-  .swatch {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: 2px solid rgba(255,255,255,0.25);
-    cursor: pointer;
-    padding: 0;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-    transition: transform .12s ease, border-color .12s ease;
-  }
-  .swatch:hover { transform: scale(1.12); }
-  .swatch.active {
-    border-color: #fff;
-    box-shadow: 0 0 0 2px var(--accent-glow), 0 1px 4px rgba(0,0,0,0.3);
-  }
-  .swatch-picker {
-    background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
-    position: relative;
-    overflow: hidden;
-  }
-  .swatch-picker::after {
-    content: '';
-    position: absolute;
-    inset: 4px;
-    border-radius: 50%;
-    background: rgba(0,0,0,0.28);
-    pointer-events: none;
-  }
-  .swatch-picker.active::after { display: none; }
-
-  .size-btn {
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background .12s ease;
-  }
-  .size-btn:hover { background: var(--glass-bg-hover); }
-  .size-btn.active { background: rgba(255,255,255,0.14); box-shadow: inset 0 1px 3px rgba(0,0,0,0.25); }
-  .size-btn .dot { border-radius: 50%; background: var(--txt); }
 
   /* ---- Commit / discard floating buttons ---- */
   #commitBar {
@@ -437,8 +344,7 @@
   #layersPanel {
     position: absolute;
     right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 0;
     display: none;
     flex-direction: column;
     width: 220px;
@@ -548,8 +454,8 @@
   #colorPicker {
     position: absolute;
     right: 16px;
-    top: 80px;
-    display: none;
+    top: max(16px, env(safe-area-inset-top, 16px));
+    display: flex;
     flex-direction: column;
     width: 220px;
     background: rgba(22, 22, 28, 0.85);
@@ -562,7 +468,6 @@
     overflow: visible;
     padding-bottom: 12px;
   }
-  #colorPicker.show { display: flex; }
 
   #colorPickerHeader {
     padding: 11px 13px 9px;
@@ -658,6 +563,99 @@
     border-color: rgba(255,255,255,0.28);
     background: rgba(255,255,255,0.10);
   }
+
+  /* Recent colors */
+  #cpRecentsWrap {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    margin: 8px 12px 0;
+  }
+  #cpRecentsWrap.has-recents { display: flex; }
+  #cpRecentsLabel {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--txt-dim);
+  }
+  #cpRecents {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .cp-recent {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    cursor: pointer;
+    padding: 0;
+    transition: transform .1s ease, border-color .1s ease, box-shadow .1s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .cp-recent:hover { transform: scale(1.25); border-color: rgba(255,255,255,0.6); }
+  .cp-recent.active {
+    border-color: #fff;
+    box-shadow: 0 0 0 1.5px var(--accent-glow), 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  /* Brush size slider */
+  #cpBrushWrap {
+    margin: 10px 12px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  #cpBrushRow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  #cpBrushLabel {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--txt-dim);
+  }
+  #cpBrushNum {
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: 11px;
+    color: var(--txt-dim);
+    min-width: 20px;
+    text-align: right;
+  }
+  #cpBrushSlider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.15);
+    outline: none;
+    cursor: pointer;
+  }
+  #cpBrushSlider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    cursor: pointer;
+    transition: transform .1s ease;
+  }
+  #cpBrushSlider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+  #cpBrushSlider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -712,17 +710,6 @@
     </button>
   </div>
 
-  <!-- Draw options: color picker + brush sizes (shown only in draw mode) -->
-  <div id="drawOptions">
-    <div class="opt-group" id="swatches"></div>
-    <div class="divider"></div>
-    <div class="opt-group" id="sizes">
-      <button class="size-btn" data-size="2" title="Thin" aria-label="Thin brush"><span class="dot" style="width:5px;height:5px;"></span></button>
-      <button class="size-btn active" data-size="4" title="Medium" aria-label="Medium brush"><span class="dot" style="width:9px;height:9px;"></span></button>
-      <button class="size-btn" data-size="8" title="Thick" aria-label="Thick brush"><span class="dot" style="width:14px;height:14px;"></span></button>
-    </div>
-  </div>
-
   <!-- Commit / discard annotation -->
   <div id="commitBar">
     <button class="commit-btn commit-green" id="commitBtn" title="Add comment" aria-label="Add comment">
@@ -774,6 +761,17 @@
     <div id="cpBottom">
       <div id="cpPreview"></div>
       <input id="cpHex" type="text" maxlength="7" spellcheck="false" autocomplete="off" />
+    </div>
+    <div id="cpRecentsWrap">
+      <div id="cpRecentsLabel">Recent</div>
+      <div id="cpRecents"></div>
+    </div>
+    <div id="cpBrushWrap">
+      <div id="cpBrushRow">
+        <span id="cpBrushLabel">Brush</span>
+        <span id="cpBrushNum">4</span>
+      </div>
+      <input type="range" id="cpBrushSlider" min="1" max="20" value="4" step="1" aria-label="Brush size">
     </div>
   </div>
 
@@ -860,12 +858,13 @@
     var annotationCount = 0;
     var DRAW_COLOR = '#FF6B6B';
     var DRAW_WIDTH = 4;
-    var PALETTE = ['#FF6B6B', '#FF9F45', '#FFE066', '#4ADE80', '#5B9DFF', '#C77DFF', '#FFFFFF', '#1A1A1A'];
     var editingAnnotation = null;
-    var spacePanning = false;       // true while spacebar is held for temporary pan
-    var prevToolBeforeSpace = null; // tool to restore when spacebar is released
-    var paletteHideTimer = null;    // grace-period timer before the color palette retracts
-    var overPencil = false, overPalette = false;
+    var spacePanning = false;
+    var prevToolBeforeSpace = null;
+    var recentColors = [];
+    var MAX_RECENTS = 8;
+    var renderRecents = null; // assigned by color picker IIFE
+    var layersPanelPositioned = false;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -1005,39 +1004,16 @@
         if (imageNode) stageEl.classList.add('grabbable');
         document.getElementById('toolPan').classList.add('active');
         document.getElementById('toolDraw').classList.remove('active');
-        hidePalette();
       } else {
         stage.draggable(false);
         stageEl.classList.remove('grabbable', 'grabbing');
         stageEl.classList.add('draw-mode');
         document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
-        // palette reveal is handled by the pencil click / hover handlers below
       }
     }
 
-    // ---- Build color swatches + wire brush sizes ----
-    var drawOptions = document.getElementById('drawOptions');
-    var swatchesEl = document.getElementById('swatches');
-    PALETTE.forEach(function (color) {
-      var sw = document.createElement('button');
-      sw.className = 'swatch' + (color === DRAW_COLOR ? ' active' : '');
-      sw.style.background = color;
-      sw.setAttribute('aria-label', 'Color ' + color);
-      sw.addEventListener('click', function () {
-        DRAW_COLOR = color;
-        swatchesEl.querySelectorAll('.swatch').forEach(function (s) {
-          s.classList.remove('active');
-          if (s.classList.contains('swatch-picker')) s.style.background = '';
-        });
-        sw.classList.add('active');
-        setTool('draw');
-        showPalette();
-      });
-      swatchesEl.appendChild(sw);
-    });
-
-    // ---- Custom HSV color picker panel ----
+    // ---- Custom HSV color picker panel (always visible) ----
     (function () {
       var colorPickerEl = document.getElementById('colorPicker');
       var cpSVCanvas   = document.getElementById('cpSV');
@@ -1102,9 +1078,9 @@
         DRAW_COLOR=hex;
         cpPreview.style.background=hex;
         cpHexInput.value=hex.toUpperCase();
-        pickerSwatch.style.background=hex;
-        swatchesEl.querySelectorAll('.swatch').forEach(function(s){s.classList.remove('active');});
-        pickerSwatch.classList.add('active');
+        document.querySelectorAll('.cp-recent').forEach(function(dot){
+          dot.classList.toggle('active', dot.dataset.hex === hex.toLowerCase());
+        });
       }
       function cpSyncFromColor(hex) {
         if(!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
@@ -1119,6 +1095,31 @@
         cpHueCanvas.width=w; cpHueCanvas.height=14;
         cpDrawHue();
       }
+
+      // Expose renderRecents to outer scope
+      renderRecents = function() {
+        var wrap = document.getElementById('cpRecentsWrap');
+        var container = document.getElementById('cpRecents');
+        if (recentColors.length === 0) { wrap.classList.remove('has-recents'); return; }
+        wrap.classList.add('has-recents');
+        container.innerHTML = '';
+        var currentHex = DRAW_COLOR.toLowerCase();
+        recentColors.forEach(function(hex) {
+          var dot = document.createElement('button');
+          dot.className = 'cp-recent' + (hex === currentHex ? ' active' : '');
+          dot.style.background = hex;
+          dot.dataset.hex = hex;
+          dot.setAttribute('aria-label', 'Recent color ' + hex);
+          dot.addEventListener('click', function() {
+            cpSyncFromColor(hex);
+            cpDrawSV();
+            cpUpdateThumbs();
+            cpApply();
+            setTool('draw');
+          });
+          container.appendChild(dot);
+        });
+      };
 
       // SV drag
       (function(){
@@ -1159,15 +1160,25 @@
       });
       cpHexInput.addEventListener('keydown',function(e){e.stopPropagation();});
 
-      // Drag handle
+      // Brush slider
+      var brushSlider = document.getElementById('cpBrushSlider');
+      var brushNum = document.getElementById('cpBrushNum');
+      brushSlider.value = DRAW_WIDTH;
+      brushNum.textContent = DRAW_WIDTH;
+      brushSlider.addEventListener('input', function() {
+        DRAW_WIDTH = parseInt(this.value, 10);
+        brushNum.textContent = DRAW_WIDTH;
+      });
+
+      // Drag handle — converts CSS right/top to absolute left/top on first drag
       (function(){
         var hdr=document.getElementById('colorPickerHeader');
         var drag=false,sx,sy,sl,st;
         hdr.addEventListener('pointerdown',function(e){
           if(e.button!==0)return;
           drag=true;sx=e.clientX;sy=e.clientY;
-          sl=parseFloat(colorPickerEl.style.left)||colorPickerEl.getBoundingClientRect().left;
-          st=parseFloat(colorPickerEl.style.top)||colorPickerEl.getBoundingClientRect().top;
+          var rect=colorPickerEl.getBoundingClientRect();
+          sl=rect.left;st=rect.top;
           colorPickerEl.style.left=sl+'px';colorPickerEl.style.top=st+'px';
           colorPickerEl.style.right='auto';colorPickerEl.style.transform='none';
           hdr.setPointerCapture(e.pointerId);e.preventDefault();
@@ -1182,72 +1193,13 @@
         hdr.addEventListener('pointercancel',function(){drag=false;});
       })();
 
-      // Picker swatch
-      var pickerSwatch = document.createElement('button');
-      pickerSwatch.className = 'swatch swatch-picker';
-      pickerSwatch.setAttribute('aria-label', 'Custom color picker');
-      pickerSwatch.addEventListener('click', function () {
-        if (colorPickerEl.classList.contains('show')) {
-          colorPickerEl.classList.remove('show');
-        } else {
-          // Position on first open below toolbar, right side
-          if (!colorPickerEl.style.left || colorPickerEl.style.right !== 'auto') {
-            colorPickerEl.classList.add('show');
-            var tb=document.getElementById('toolbar').getBoundingClientRect();
-            var pw=colorPickerEl.offsetWidth||220;
-            colorPickerEl.style.left=(window.innerWidth-16-pw)+'px';
-            colorPickerEl.style.top=(tb.bottom+14)+'px';
-            colorPickerEl.style.right='auto';
-            colorPickerEl.style.transform='none';
-          } else {
-            colorPickerEl.classList.add('show');
-          }
-          cpSyncFromColor(DRAW_COLOR.startsWith('#')?DRAW_COLOR:'#FF6B6B');
-          cpSetup();
-          cpDrawSV();
-          cpUpdateThumbs();
-          cpApply();
-          setTool('draw');
-          showPalette();
-        }
-      });
-      swatchesEl.appendChild(pickerSwatch);
+      // Initialize immediately — picker is always visible from launch
+      cpSetup();
+      cpSyncFromColor(DRAW_COLOR);
+      cpDrawSV();
+      cpUpdateThumbs();
+      cpApply();
     })();
-
-    document.getElementById('sizes').querySelectorAll('.size-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        DRAW_WIDTH = parseInt(btn.getAttribute('data-size'), 10);
-        document.getElementById('sizes').querySelectorAll('.size-btn').forEach(function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-      });
-    });
-
-    // ---- Color palette reveal: drops down on pencil hover/select, retracts after a grace period ----
-    function showPalette() {
-      if (paletteHideTimer) { clearTimeout(paletteHideTimer); paletteHideTimer = null; }
-      drawOptions.classList.add('show');
-    }
-    function hidePalette() {
-      if (paletteHideTimer) { clearTimeout(paletteHideTimer); paletteHideTimer = null; }
-      drawOptions.classList.remove('show');
-    }
-    function scheduleHidePalette() {
-      if (paletteHideTimer) clearTimeout(paletteHideTimer);
-      // Wait a few seconds before retracting so a quick return keeps it open.
-      paletteHideTimer = setTimeout(function () {
-        drawOptions.classList.remove('show');
-        paletteHideTimer = null;
-      }, 2500);
-    }
-    function refreshPalette() {
-      if (overPencil || overPalette) showPalette();
-      else scheduleHidePalette();
-    }
-    var toolDrawBtn = document.getElementById('toolDraw');
-    toolDrawBtn.addEventListener('mouseenter', function () { overPencil = true; refreshPalette(); });
-    toolDrawBtn.addEventListener('mouseleave', function () { overPencil = false; refreshPalette(); });
-    drawOptions.addEventListener('mouseenter', function () { overPalette = true; refreshPalette(); });
-    drawOptions.addEventListener('mouseleave', function () { overPalette = false; refreshPalette(); });
 
     // ---- Canvas-space pointer coordinates ----
     function getCanvasPointer() {
@@ -1386,6 +1338,13 @@
       stagingLayer.batchDraw();
 
       annotations.push({ name: annName, color: color, konvaLayer: annLayer, visible: true, text: text || '' });
+      // Add committed color to recents
+      var hexLow = color.toLowerCase();
+      var idx = recentColors.indexOf(hexLow);
+      if (idx !== -1) recentColors.splice(idx, 1);
+      recentColors.unshift(hexLow);
+      if (recentColors.length > MAX_RECENTS) recentColors.length = MAX_RECENTS;
+      if (renderRecents) renderRecents();
       hideCommitBar();
       hideCommentBox();
       renderLayersPanel();
@@ -1396,6 +1355,14 @@
     function renderLayersPanel() {
       if (annotations.length === 0) { layersPanel.classList.remove('show'); return; }
       layersPanel.classList.add('show');
+      if (!layersPanelPositioned) {
+        layersPanelPositioned = true;
+        var cpRect = document.getElementById('colorPicker').getBoundingClientRect();
+        layersPanel.style.top = (cpRect.bottom + 8) + 'px';
+        layersPanel.style.right = '16px';
+        layersPanel.style.left = 'auto';
+        layersPanel.style.transform = 'none';
+      }
       layersList.innerHTML = '';
       for (var i = annotations.length - 1; i >= 0; i--) {
         (function (ann) {
@@ -1484,7 +1451,7 @@
 
     // ---- Toolbar buttons ----
     document.getElementById('toolPan').addEventListener('click', function () { setTool('pan'); });
-    document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); showPalette(); });
+    document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); });
 
     // ---- Commit / discard buttons ----
     document.getElementById('commitBtn').addEventListener('click', function () {
