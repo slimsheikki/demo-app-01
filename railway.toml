@@ -1,0 +1,7 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm install && npm run build --workspace=client"
+
+[deploy]
+startCommand = "node_modules/.bin/tsx server/src/index.ts"
+healthcheckPath = "/api/health"
