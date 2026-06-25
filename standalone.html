@@ -255,13 +255,12 @@
   }
   .tbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
 
-  /* ---- Draw options (color + brush size), shown only in draw mode ---- */
+  /* ---- Draw options (color + brush size): drops down on hover/select of pencil ---- */
   #drawOptions {
     position: absolute;
     left: 50%;
     top: calc(max(16px, env(safe-area-inset-top, 16px)) + 56px);
-    transform: translateX(-50%);
-    display: none;
+    display: flex;
     align-items: center;
     gap: 10px;
     padding: 7px 11px;
@@ -276,8 +275,28 @@
     max-width: calc(100vw - 24px);
     flex-wrap: wrap;
     justify-content: center;
+    /* hidden resting state, tucked up behind the toolbar */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-50%) translateY(-12px);
+    /* retract: quick ease-in (the few-second grace before it fires lives in JS) */
+    transition: opacity .14s ease-in, transform .14s ease-in, visibility 0s linear .14s;
   }
-  #drawOptions.show { display: flex; }
+  #drawOptions.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(-50%) translateY(0);
+    /* drop down: smooth, a touch slower than the retract */
+    transition: opacity .28s cubic-bezier(.2,.7,.2,1), transform .28s cubic-bezier(.2,.7,.2,1), visibility 0s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #drawOptions, #drawOptions.show {
+      transform: translateX(-50%);
+      transition: opacity .12s linear, visibility 0s;
+    }
+  }
 
   .opt-group { display: flex; align-items: center; gap: 6px; }
 
@@ -694,6 +713,10 @@
     var DRAW_WIDTH = 4;
     var PALETTE = ['#FF6B6B', '#FF9F45', '#FFE066', '#4ADE80', '#5B9DFF', '#C77DFF', '#FFFFFF', '#1A1A1A'];
     var editingAnnotation = null;
+    var spacePanning = false;       // true while spacebar is held for temporary pan
+    var prevToolBeforeSpace = null; // tool to restore when spacebar is released
+    var paletteHideTimer = null;    // grace-period timer before the color palette retracts
+    var overPencil = false, overPalette = false;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -833,14 +856,14 @@
         if (imageNode) stageEl.classList.add('grabbable');
         document.getElementById('toolPan').classList.add('active');
         document.getElementById('toolDraw').classList.remove('active');
-        drawOptions.classList.remove('show');
+        hidePalette();
       } else {
         stage.draggable(false);
         stageEl.classList.remove('grabbable', 'grabbing');
         stageEl.classList.add('draw-mode');
         document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
-        drawOptions.classList.add('show');
+        // palette reveal is handled by the pencil click / hover handlers below
       }
     }
 
@@ -867,6 +890,33 @@
         btn.classList.add('active');
       });
     });
+
+    // ---- Color palette reveal: drops down on pencil hover/select, retracts after a grace period ----
+    function showPalette() {
+      if (paletteHideTimer) { clearTimeout(paletteHideTimer); paletteHideTimer = null; }
+      drawOptions.classList.add('show');
+    }
+    function hidePalette() {
+      if (paletteHideTimer) { clearTimeout(paletteHideTimer); paletteHideTimer = null; }
+      drawOptions.classList.remove('show');
+    }
+    function scheduleHidePalette() {
+      if (paletteHideTimer) clearTimeout(paletteHideTimer);
+      // Wait a few seconds before retracting so a quick return keeps it open.
+      paletteHideTimer = setTimeout(function () {
+        drawOptions.classList.remove('show');
+        paletteHideTimer = null;
+      }, 2500);
+    }
+    function refreshPalette() {
+      if (overPencil || overPalette) showPalette();
+      else scheduleHidePalette();
+    }
+    var toolDrawBtn = document.getElementById('toolDraw');
+    toolDrawBtn.addEventListener('mouseenter', function () { overPencil = true; refreshPalette(); });
+    toolDrawBtn.addEventListener('mouseleave', function () { overPencil = false; refreshPalette(); });
+    drawOptions.addEventListener('mouseenter', function () { overPalette = true; refreshPalette(); });
+    drawOptions.addEventListener('mouseleave', function () { overPalette = false; refreshPalette(); });
 
     // ---- Canvas-space pointer coordinates ----
     function getCanvasPointer() {
@@ -1008,6 +1058,7 @@
       hideCommitBar();
       hideCommentBox();
       renderLayersPanel();
+      setTool('pan'); // committing a comment returns to the hand tool
     }
 
     // ---- Layers panel ----
@@ -1102,7 +1153,7 @@
 
     // ---- Toolbar buttons ----
     document.getElementById('toolPan').addEventListener('click', function () { setTool('pan'); });
-    document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); });
+    document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); showPalette(); });
 
     // ---- Commit / discard buttons ----
     document.getElementById('commitBtn').addEventListener('click', function () {
@@ -1138,6 +1189,26 @@
           commitAnnotation(this.value);
         }
       }
+    });
+
+    // ---- Spacebar = hold-to-pan (temporary hand tool, like Photoshop/Figma) ----
+    function isTypingTarget(el) {
+      return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
+    }
+    window.addEventListener('keydown', function (e) {
+      if (e.code !== 'Space' || e.repeat) return;
+      if (!imageNode || spacePanning || isTypingTarget(document.activeElement)) return;
+      e.preventDefault();
+      spacePanning = true;
+      prevToolBeforeSpace = currentTool;
+      if (currentTool !== 'pan') setTool('pan');
+    });
+    window.addEventListener('keyup', function (e) {
+      if (e.code !== 'Space' || !spacePanning) return;
+      e.preventDefault();
+      spacePanning = false;
+      if (prevToolBeforeSpace && prevToolBeforeSpace !== 'pan') setTool(prevToolBeforeSpace);
+      prevToolBeforeSpace = null;
     });
 
     // Auto-grow textarea (fallback for browsers without field-sizing: content)
