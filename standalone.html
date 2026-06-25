@@ -25,6 +25,8 @@
     #dz{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#555;gap:10px;font-size:14px;cursor:pointer}
     #dz .ico{font-size:52px}
     #dz.hide{display:none}
+    #errmsg{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;display:none;z-index:99;white-space:nowrap}
+    #loadmsg{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.6);font-size:15px;color:#ccc;z-index:98}
     /* ── Layers ── */
     #lp{width:170px;background:#191919;border-left:1px solid #2a2a2a;display:flex;flex-direction:column;flex-shrink:0}
     #lhdr{padding:7px 10px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em}
@@ -85,6 +87,8 @@
       <div>Drop an image here</div>
       <div style="font-size:12px;color:#444">or tap "Open image"</div>
     </div>
+    <div id="loadmsg">Loading image…</div>
+    <div id="errmsg"></div>
     <div id="kc"></div>
     <div id="txtwrap"><input id="txtin" type="text" placeholder="Type text…"></div>
   </div>
@@ -155,20 +159,40 @@ function initStage(w, h) {
 }
 
 // ── Image Loading ──────────────────────────────────────────────────────────
+function showErr(msg) {
+  const el = document.getElementById('errmsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+
 function loadFile(file) {
-  if (!file?.type.startsWith('image/')) return;
-  const url = URL.createObjectURL(file);
-  const img = new Image();
-  img.onload = () => {
-    imgW = img.naturalWidth; imgH = img.naturalHeight;
-    shapeMap = {}; layers = []; undoStack = []; selNode = null; activeId = null;
-    document.getElementById('dz').classList.add('hide');
-    initStage(imgW, imgH);
-    imgLayer.add(new Konva.Image({image:img, x:0, y:0, width:imgW, height:imgH}));
-    imgLayer.draw();
-    addLayer('Layer 1');
+  if (!file) return;
+  // Accept any file — let the browser decide if it can render it
+  const loadEl = document.getElementById('loadmsg');
+  loadEl.style.display = 'flex';
+
+  const reader = new FileReader();
+  reader.onerror = () => { loadEl.style.display='none'; showErr('Could not read file.'); };
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    const img = new Image();
+    img.onerror = () => { loadEl.style.display='none'; showErr('Image format not supported by this browser.'); };
+    img.onload = () => {
+      loadEl.style.display = 'none';
+      imgW = img.naturalWidth || img.width;
+      imgH = img.naturalHeight || img.height;
+      if (!imgW || !imgH) { showErr('Could not read image dimensions.'); return; }
+      shapeMap = {}; layers = []; undoStack = []; selNode = null; activeId = null;
+      document.getElementById('dz').classList.add('hide');
+      initStage(imgW, imgH);
+      imgLayer.add(new Konva.Image({image:img, x:0, y:0, width:imgW, height:imgH}));
+      imgLayer.draw();
+      addLayer('Layer 1');
+    };
+    img.src = dataUrl;
   };
-  img.src = url;
+  reader.readAsDataURL(file);
 }
 
 // ── Layer Management ───────────────────────────────────────────────────────
