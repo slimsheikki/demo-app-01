@@ -316,11 +316,12 @@
   /* ---- Commit / discard floating buttons ---- */
   #commitBar {
     position: absolute;
-    right: 20px;
-    bottom: max(84px, calc(env(safe-area-inset-bottom, 0px) + 84px));
+    left: 50%;
+    bottom: max(90px, calc(env(safe-area-inset-bottom, 0px) + 90px));
+    transform: translateX(-50%);
     display: none;
-    flex-direction: column;
-    gap: 8px;
+    flex-direction: row;
+    gap: 10px;
     z-index: 25;
   }
   #commitBar.show { display: flex; }
