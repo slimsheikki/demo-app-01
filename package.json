@@ -1,0 +1,5 @@
+{
+  "name": "demo-app-01",
+  "private": true,
+  "workspaces": ["client", "server"]
+}
