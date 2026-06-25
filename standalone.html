@@ -1459,6 +1459,7 @@
     // ---- Draw event handlers ----
     stage.on('mousedown touchstart', function (e) {
       if (currentTool !== 'draw' || !imageNode) return;
+      if (e.evt.button != null && e.evt.button !== 0) return; // ignore middle/right mouse buttons
       if (e.evt.touches && e.evt.touches.length > 1) return;
       isDrawing = true;
       var pos = getCanvasPointer();
@@ -1485,7 +1486,8 @@
       stagingLayer.batchDraw();
     });
 
-    stage.on('mouseup touchend', function () {
+    stage.on('mouseup touchend', function (e) {
+      if (e.evt.button != null && e.evt.button !== 0) return; // ignore middle/right mouse buttons
       if (!isDrawing) return;
       isDrawing = false;
       currentLine = null;
