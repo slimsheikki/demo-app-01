@@ -208,6 +208,248 @@
   .divider { width: 1px; height: 22px; background: var(--glass-border); margin: 0 2px; }
 
   input[type="file"] { display: none; }
+
+  /* ---- Draw-mode cursor ---- */
+  #stage.draw-mode { cursor: crosshair !important; }
+
+  /* ---- Toolbar (pan / draw toggle) ---- */
+  #toolbar {
+    position: absolute;
+    left: 50%;
+    top: max(16px, env(safe-area-inset-top, 16px));
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 4px;
+    padding: 5px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 20;
+    user-select: none;
+  }
+  #toolbar.show { display: flex; }
+
+  .tbtn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--txt);
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .14s ease;
+  }
+  .tbtn:hover { background: var(--glass-bg-hover); }
+  .tbtn.active {
+    background: rgba(255,255,255,0.14);
+    color: #fff;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
+  }
+  .tbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
+
+  /* ---- Commit / discard floating buttons ---- */
+  #commitBar {
+    position: absolute;
+    right: 20px;
+    bottom: max(84px, calc(env(safe-area-inset-bottom, 0px) + 84px));
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 25;
+  }
+  #commitBar.show { display: flex; }
+
+  .commit-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.18);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .commit-btn:hover { transform: scale(1.09); filter: brightness(1.1); }
+  .commit-btn:active { transform: scale(0.95); }
+  .commit-btn svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 2.2; fill: none; }
+
+  .commit-green {
+    background: rgba(40, 190, 95, 0.22);
+    border-color: rgba(70, 220, 120, 0.38);
+    color: #5dde8a;
+  }
+  .commit-red {
+    background: rgba(210, 55, 55, 0.2);
+    border-color: rgba(255, 95, 95, 0.38);
+    color: #ff7070;
+  }
+
+  /* ---- Comment box ---- */
+  #commentBox {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    width: min(340px, calc(100vw - 40px));
+    padding: 14px;
+    background: rgba(24, 24, 30, 0.82);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.07);
+    z-index: 30;
+  }
+  #commentBox.show { display: flex; }
+
+  #commentBox textarea {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.11);
+    border-radius: 10px;
+    color: var(--txt);
+    font-size: 14px;
+    line-height: 1.5;
+    font-family: inherit;
+    padding: 10px 12px;
+    resize: none;
+    min-height: 70px;
+    width: 100%;
+    outline: none;
+    field-sizing: content;
+    transition: border-color .15s ease;
+  }
+  #commentBox textarea:focus { border-color: rgba(255,255,255,0.28); }
+  #commentBox textarea::placeholder { color: var(--txt-dim); }
+
+  .comment-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .comment-actions .commit-btn { width: 40px; height: 40px; }
+  .comment-actions .commit-btn svg { width: 18px; height: 18px; }
+
+  /* ---- Layers panel ---- */
+  #layersPanel {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    flex-direction: column;
+    width: 220px;
+    max-height: calc(100dvh - 80px);
+    max-height: calc(100vh - 80px);
+    background: rgba(22, 22, 28, 0.78);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+    z-index: 20;
+    overflow: hidden;
+  }
+  #layersPanel.show { display: flex; }
+
+  #layersPanelHeader {
+    padding: 11px 13px 9px;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--txt-dim);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0;
+  }
+
+  #layersList { overflow-y: auto; flex: 1; }
+
+  .layer-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    transition: background .12s ease;
+  }
+  .layer-row:last-child { border-bottom: none; }
+  .layer-row:hover { background: rgba(255,255,255,0.03); }
+
+  .layer-eye {
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--txt);
+    cursor: pointer;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .12s ease, opacity .12s ease;
+    padding: 0;
+  }
+  .layer-eye:hover { background: rgba(255,255,255,0.1); }
+  .layer-eye.hidden-layer { opacity: 0.3; }
+  .layer-eye svg { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+
+  .layer-color {
+    flex-shrink: 0;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+  }
+
+  .layer-name {
+    flex: 1;
+    font-size: 12.5px;
+    color: var(--txt);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    border-radius: 5px;
+    padding: 2px 4px;
+    margin: -2px -4px;
+    outline: none;
+    transition: background .12s ease;
+  }
+  .layer-name[contenteditable="true"]:focus {
+    background: rgba(255,255,255,0.09);
+    white-space: normal;
+    word-break: break-word;
+  }
+
+  .layer-delete {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--txt-dim);
+    cursor: pointer;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color .12s ease, background .12s ease;
+    padding: 0;
+  }
+  .layer-delete:hover { color: var(--danger); background: rgba(255,107,107,0.1); }
+  .layer-delete svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 2.2; fill: none; }
 </style>
 </head>
 <body>
@@ -248,6 +490,57 @@
     </button>
   </div>
 
+  <!-- Toolbar: pan / draw tool toggle -->
+  <div id="toolbar">
+    <button class="tbtn active" id="toolPan" title="Pan" aria-label="Pan tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M18 11V9a2 2 0 0 0-4 0v2m-4-4V5a2 2 0 0 0-4 0v9l-1.5-2.5a1.6 1.6 0 0 0-2.8 1.6l3 5.3A5 5 0 0 0 9 20h5a5 5 0 0 0 5-5v-4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="tbtn" id="toolDraw" title="Draw" aria-label="Draw tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15.5 3.5a2.121 2.121 0 0 1 3 3L7 18l-4 1 1-4L15.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Commit / discard annotation -->
+  <div id="commitBar">
+    <button class="commit-btn commit-green" id="commitBtn" title="Add comment" aria-label="Add comment">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 12l5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="commit-btn commit-red" id="discardBtn" title="Discard" aria-label="Discard annotation">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Comment box (HTML overlay) -->
+  <div id="commentBox">
+    <textarea id="commentInput" placeholder="Add a comment… (Ctrl+Enter to confirm, Esc to discard)"></textarea>
+    <div class="comment-actions">
+      <button class="commit-btn commit-green" id="commentConfirm" title="Confirm" aria-label="Confirm comment">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 12l5 5L20 7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button class="commit-btn commit-red" id="commentCancel" title="Discard" aria-label="Discard comment">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Layers panel -->
+  <div id="layersPanel">
+    <div id="layersPanelHeader">Layers</div>
+    <div id="layersList"></div>
+  </div>
+
   <!-- Error toast -->
   <div id="err"></div>
 
@@ -277,12 +570,18 @@
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
 
     // ---- Elements ----
-    var dropEl    = document.getElementById('drop');
-    var stageEl   = document.getElementById('stage');
-    var controls  = document.getElementById('controls');
-    var errEl     = document.getElementById('err');
-    var fileInput = document.getElementById('fileInput');
-    var zoomLabel = document.getElementById('zoomLabel');
+    var dropEl      = document.getElementById('drop');
+    var stageEl     = document.getElementById('stage');
+    var controls    = document.getElementById('controls');
+    var toolbar     = document.getElementById('toolbar');
+    var commitBar   = document.getElementById('commitBar');
+    var commentBox  = document.getElementById('commentBox');
+    var commentInput = document.getElementById('commentInput');
+    var layersPanel = document.getElementById('layersPanel');
+    var layersList  = document.getElementById('layersList');
+    var errEl       = document.getElementById('err');
+    var fileInput   = document.getElementById('fileInput');
+    var zoomLabel   = document.getElementById('zoomLabel');
 
     // ---- Guard: the viewer engine (Konva) loads from a CDN. If that fails
     // (no connection, CDN blocked), bail loudly instead of dying silently. ----
@@ -310,9 +609,21 @@
     });
     var layer = new Konva.Layer();
     stage.add(layer);
+    var stagingLayer = new Konva.Layer();
+    stage.add(stagingLayer);
 
     var imageNode = null;   // current Konva.Image
     var imgW = 0, imgH = 0; // natural dimensions
+
+    // ---- Drawing / annotation state ----
+    var currentTool = 'pan';
+    var isDrawing = false;
+    var currentLine = null;
+    var stagingStrokes = [];
+    var annotations = [];
+    var annotationCount = 0;
+    var DRAW_COLOR = '#FF6B6B';
+    var DRAW_WIDTH = 3;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -395,6 +706,7 @@
 
         dropEl.classList.add('hide');
         controls.classList.add('show');
+        toolbar.classList.add('show');
         stageEl.classList.add('grabbable');
 
         // Let layout settle, then size the stage and fit
@@ -429,6 +741,264 @@
       resizeStage();
     });
 
+    // ---- Tool switching ----
+    function setTool(tool) {
+      currentTool = tool;
+      if (isDrawing) { isDrawing = false; currentLine = null; }
+      if (tool === 'pan') {
+        stage.draggable(true);
+        stageEl.classList.remove('draw-mode');
+        if (imageNode) stageEl.classList.add('grabbable');
+        document.getElementById('toolPan').classList.add('active');
+        document.getElementById('toolDraw').classList.remove('active');
+      } else {
+        stage.draggable(false);
+        stageEl.classList.remove('grabbable', 'grabbing');
+        stageEl.classList.add('draw-mode');
+        document.getElementById('toolPan').classList.remove('active');
+        document.getElementById('toolDraw').classList.add('active');
+      }
+    }
+
+    // ---- Canvas-space pointer coordinates ----
+    function getCanvasPointer() {
+      var pos = stage.getPointerPosition();
+      if (!pos) return { x: 0, y: 0 };
+      return {
+        x: (pos.x - stage.x()) / stage.scaleX(),
+        y: (pos.y - stage.y()) / stage.scaleY()
+      };
+    }
+
+    // Bounding box of all staging strokes (canvas space)
+    function getStagingBBox() {
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      stagingStrokes.forEach(function (line) {
+        var pts = line.points();
+        for (var i = 0; i < pts.length; i += 2) {
+          minX = Math.min(minX, pts[i]);
+          maxX = Math.max(maxX, pts[i]);
+          minY = Math.min(minY, pts[i + 1]);
+          maxY = Math.max(maxY, pts[i + 1]);
+        }
+      });
+      if (!isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0, cx: 0, cy: 0 };
+      return {
+        minX: minX, minY: minY, maxX: maxX, maxY: maxY,
+        cx: (minX + maxX) / 2, cy: (minY + maxY) / 2
+      };
+    }
+
+    // ---- Commit / discard UI helpers ----
+    function showCommitBar() { commitBar.classList.add('show'); }
+    function hideCommitBar() { commitBar.classList.remove('show'); }
+
+    function showCommentBox() {
+      var bbox = getStagingBBox();
+      var sc = stage.scaleX();
+      var screenCX = bbox.cx * sc + stage.x();
+      var screenMaxY = bbox.maxY * sc + stage.y();
+      var cbW = Math.min(340, window.innerWidth - 40);
+      var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
+      var top = screenMaxY + 16;
+      if (top + 160 > window.innerHeight - 20) {
+        top = (bbox.minY * sc + stage.y()) - 176;
+      }
+      top = Math.max(16, top);
+      commentBox.style.left = left + 'px';
+      commentBox.style.top = top + 'px';
+      commentBox.classList.add('show');
+      commentInput.focus();
+    }
+
+    function hideCommentBox() {
+      commentBox.classList.remove('show');
+      commentInput.value = '';
+      commentInput.style.height = '';
+    }
+
+    function discardStaging() {
+      isDrawing = false;
+      currentLine = null;
+      stagingStrokes = [];
+      stagingLayer.destroyChildren();
+      stagingLayer.batchDraw();
+      hideCommitBar();
+      hideCommentBox();
+    }
+
+    function commitAnnotation(text) {
+      if (stagingStrokes.length === 0) return;
+      annotationCount++;
+      var annName = 'Comment ' + annotationCount;
+      var color = DRAW_COLOR;
+
+      var annLayer = new Konva.Layer();
+      stage.add(annLayer);
+      stagingLayer.moveToTop();
+
+      // Move strokes from staging to the new annotation layer
+      var bbox = getStagingBBox();
+      stagingStrokes.forEach(function (line) {
+        line.remove();
+        annLayer.add(line);
+      });
+      stagingStrokes = [];
+
+      // Add comment label if text was provided
+      if (text && text.trim()) {
+        var lx = bbox.maxX + 10;
+        var ly = bbox.minY;
+        var label = new Konva.Label({ x: lx, y: ly });
+        label.add(new Konva.Tag({
+          fill: 'rgba(0, 0, 0, 0.72)',
+          cornerRadius: 7,
+          stroke: 'rgba(255,255,255,0.14)',
+          strokeWidth: 1
+        }));
+        label.add(new Konva.Text({
+          text: text.trim(),
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+          fontSize: 12,
+          lineHeight: 1.5,
+          fill: 'rgba(255,255,255,0.92)',
+          padding: 9
+        }));
+        annLayer.add(label);
+      }
+
+      annLayer.batchDraw();
+      stagingLayer.batchDraw();
+
+      annotations.push({ name: annName, color: color, konvaLayer: annLayer, visible: true, text: text || '' });
+      hideCommitBar();
+      hideCommentBox();
+      renderLayersPanel();
+    }
+
+    // ---- Layers panel ----
+    function renderLayersPanel() {
+      if (annotations.length === 0) { layersPanel.classList.remove('show'); return; }
+      layersPanel.classList.add('show');
+      layersList.innerHTML = '';
+      for (var i = annotations.length - 1; i >= 0; i--) {
+        (function (ann) {
+          var row = document.createElement('div');
+          row.className = 'layer-row';
+
+          var eye = document.createElement('button');
+          eye.className = 'layer-eye' + (ann.visible ? '' : ' hidden-layer');
+          eye.setAttribute('aria-label', ann.visible ? 'Hide layer' : 'Show layer');
+          eye.innerHTML = ann.visible
+            ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke-linecap="round"/><circle cx="12" cy="12" r="3"/></svg>'
+            : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.06 18.06 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke-linecap="round"/><path d="M1 1l22 22" stroke-linecap="round"/></svg>';
+          eye.addEventListener('click', function () {
+            ann.visible = !ann.visible;
+            ann.konvaLayer.visible(ann.visible);
+            stage.batchDraw();
+            renderLayersPanel();
+          });
+
+          var dot = document.createElement('span');
+          dot.className = 'layer-color';
+          dot.style.background = ann.color;
+
+          var nameEl = document.createElement('span');
+          nameEl.className = 'layer-name';
+          nameEl.textContent = ann.name;
+          nameEl.contentEditable = 'true';
+          nameEl.spellcheck = false;
+          nameEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+          });
+          nameEl.addEventListener('blur', function () {
+            var v = this.textContent.trim();
+            ann.name = v || ann.name;
+            this.textContent = ann.name;
+          });
+
+          var del = document.createElement('button');
+          del.className = 'layer-delete';
+          del.setAttribute('aria-label', 'Delete layer');
+          del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
+          del.addEventListener('click', function () {
+            ann.konvaLayer.destroy();
+            annotations.splice(annotations.indexOf(ann), 1);
+            renderLayersPanel();
+          });
+
+          row.appendChild(eye);
+          row.appendChild(dot);
+          row.appendChild(nameEl);
+          row.appendChild(del);
+          layersList.appendChild(row);
+        })(annotations[i]);
+      }
+    }
+
+    // ---- Draw event handlers ----
+    stage.on('mousedown touchstart', function (e) {
+      if (currentTool !== 'draw' || !imageNode) return;
+      if (e.evt.touches && e.evt.touches.length > 1) return;
+      isDrawing = true;
+      var pos = getCanvasPointer();
+      currentLine = new Konva.Line({
+        points: [pos.x, pos.y, pos.x, pos.y],
+        stroke: DRAW_COLOR,
+        strokeWidth: DRAW_WIDTH,
+        tension: 0.5,
+        lineCap: 'round',
+        lineJoin: 'round',
+        listening: false
+      });
+      stagingLayer.add(currentLine);
+      stagingStrokes.push(currentLine);
+    });
+
+    stage.on('mousemove touchmove', function (e) {
+      if (!isDrawing || currentTool !== 'draw') return;
+      if (e.evt.touches && e.evt.touches.length > 1) { isDrawing = false; return; }
+      var pos = getCanvasPointer();
+      var pts = currentLine.points().slice();
+      pts.push(pos.x, pos.y);
+      currentLine.points(pts);
+      stagingLayer.batchDraw();
+    });
+
+    stage.on('mouseup touchend', function () {
+      if (!isDrawing) return;
+      isDrawing = false;
+      currentLine = null;
+      if (stagingStrokes.length > 0) showCommitBar();
+    });
+
+    // ---- Toolbar buttons ----
+    document.getElementById('toolPan').addEventListener('click', function () { setTool('pan'); });
+    document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); });
+
+    // ---- Commit / discard buttons ----
+    document.getElementById('commitBtn').addEventListener('click', function () {
+      hideCommitBar();
+      showCommentBox();
+    });
+    document.getElementById('discardBtn').addEventListener('click', discardStaging);
+
+    document.getElementById('commentConfirm').addEventListener('click', function () {
+      commitAnnotation(commentInput.value);
+    });
+    document.getElementById('commentCancel').addEventListener('click', discardStaging);
+
+    commentInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { discardStaging(); return; }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { commitAnnotation(this.value); }
+    });
+
+    // Auto-grow textarea (fallback for browsers without field-sizing: content)
+    commentInput.addEventListener('input', function () {
+      this.style.height = 'auto';
+      this.style.height = Math.max(70, this.scrollHeight) + 'px';
+    });
+
     // ---- Wheel zoom (desktop / trackpad) ----
     stage.on('wheel', function (e) {
       e.evt.preventDefault();
@@ -454,6 +1024,7 @@
     }
 
     stage.on('touchmove', function (e) {
+      if (currentTool === 'draw') return;
       var t1 = e.evt.touches[0];
       var t2 = e.evt.touches[1];
       if (!t1 || !t2 || !imageNode) return;
@@ -496,7 +1067,7 @@
     stage.on('dragend',   function () { stageEl.classList.remove('grabbing'); });
 
     // ---- Double-click / double-tap to fit ----
-    stage.on('dblclick dbltap', function () { fitToScreen(); });
+    stage.on('dblclick dbltap', function () { if (currentTool === 'pan') fitToScreen(); });
 
     // ---- Drag & drop on the whole window ----
     function hasFiles(e) {
