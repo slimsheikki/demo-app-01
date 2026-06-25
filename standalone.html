@@ -9,9 +9,9 @@
     /* ── Reset & tokens ── */
     *{margin:0;padding:0;box-sizing:border-box}
     :root{
-      --bg0:#1a1a1a;--bg1:#252525;--bg2:#2e2e2e;--bg3:#383838;
-      --bd:#3a3a3a;--txt:#c0c0c0;--txt2:#787878;--acc:#0070d8;
-      --canvas-bg:#505050;
+      --bg0:#111;--bg1:#1c1c1e;--bg2:#282828;--bg3:#333;
+      --bd:#2c2c2e;--txt:#d0d0d0;--txt2:#666;--acc:#0a84ff;
+      --canvas-bg:#444;
     }
     body{
       background:var(--bg0);color:var(--txt);
@@ -44,8 +44,8 @@
       overflow-x:auto;-webkit-overflow-scrolling:touch;
     }
     .swatch{
-      width:16px;height:16px;border-radius:50%;cursor:pointer;
-      border:1.5px solid transparent;flex-shrink:0;touch-action:manipulation;
+      width:22px;height:22px;border-radius:50%;cursor:pointer;
+      border:2px solid transparent;flex-shrink:0;touch-action:manipulation;
     }
     .swatch.on{border-color:#fff}
     .swatch:not(.on):hover{border-color:var(--txt2)}
@@ -142,7 +142,7 @@
     #ll::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
     .lr{
       height:30px;display:flex;align-items:center;gap:6px;
-      padding:0 10px;cursor:pointer;border:1px solid transparent;border-radius:4px;
+      padding:0 14px;cursor:pointer;border:1px solid transparent;border-radius:20px;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent;
       position:relative;flex-shrink:0;white-space:nowrap;
     }
@@ -163,14 +163,19 @@
 
     /* ── Tool strip (always visible, bottom) ── */
     #toolstrip{
-      display:flex;height:60px;background:var(--bg1);
+      display:flex;height:76px;background:var(--bg1);
       border-top:1px solid var(--bd);
       flex-shrink:0;align-items:center;justify-content:center;
-      padding:0 16px;gap:6px;
+      padding:0 8px;gap:2px;
     }
-    #toolstrip .tbtn{width:48px;height:48px;border-radius:12px;flex-shrink:0}
-    #toolstrip .tbtn.on{background:var(--acc);border-color:transparent;color:#fff}
+    #toolstrip .tbtn{
+      width:50px;height:66px;border-radius:12px;flex-shrink:0;
+      flex-direction:column;gap:5px;
+    }
+    #toolstrip .tbtn.on{background:#e8e8e8;border-color:transparent;color:#111}
     #toolstrip .tbtn.on::before{display:none}
+    .tlbl{font-size:9px;letter-spacing:.02em;font-weight:500;color:var(--txt2);line-height:1;pointer-events:none}
+    #toolstrip .tbtn.on .tlbl{color:#333}
 
     /* ── Status bar ── */
     #statusbar{
@@ -180,9 +185,11 @@
     }
     #statusbar span{font-size:10px;color:var(--txt2)}
 
+    #statusbar{display:none}
+
     @media(max-width:480px){
-      #toolstrip{gap:3px;padding:0 8px}
-      #toolstrip .tbtn{width:42px;height:42px}
+      #toolstrip{gap:0;padding:0 4px}
+      #toolstrip .tbtn{width:44px;height:62px}
       #swid{width:52px}
       #sopa{width:44px}
     }
@@ -313,24 +320,31 @@
 <div id="toolstrip">
   <button class="tbtn" data-tool="select" title="Select (V)">
     <svg width="17" height="17"><use href="#ico-select"/></svg>
+    <span class="tlbl">Select</span>
   </button>
   <button class="tbtn on" data-tool="pencil" title="Pencil (P)">
     <svg width="17" height="17"><use href="#ico-pencil"/></svg>
+    <span class="tlbl">Pencil</span>
   </button>
   <button class="tbtn" data-tool="rectangle" title="Rectangle (R)">
     <svg width="17" height="17"><use href="#ico-rect"/></svg>
+    <span class="tlbl">Rect</span>
   </button>
   <button class="tbtn" data-tool="ellipse" title="Ellipse (E)">
     <svg width="17" height="17"><use href="#ico-ellipse"/></svg>
+    <span class="tlbl">Oval</span>
   </button>
   <button class="tbtn" data-tool="arrow" title="Arrow (A)">
     <svg width="17" height="17"><use href="#ico-arrow"/></svg>
+    <span class="tlbl">Arrow</span>
   </button>
   <button class="tbtn" data-tool="text" title="Text (T)">
     <svg width="17" height="17"><use href="#ico-text"/></svg>
+    <span class="tlbl">Text</span>
   </button>
   <button class="tbtn" data-tool="eraser" title="Eraser (X)">
     <svg width="17" height="17"><use href="#ico-eraser"/></svg>
+    <span class="tlbl">Erase</span>
   </button>
 </div>
 
