@@ -37,10 +37,10 @@
     #openBtn{background:var(--acc);border-color:var(--acc);color:#fff}
     #openBtn:hover{background:#005bbf;border-color:#005bbf}
 
-    /* ── Options bar ── */
+    /* ── Options bar (below canvas) ── */
     #optbar{
-      height:32px;background:var(--bg1);border-bottom:1px solid var(--bd);
-      display:flex;align-items:center;padding:0 8px;gap:5px;flex-shrink:0;
+      height:36px;background:var(--bg1);border-top:1px solid var(--bd);
+      display:flex;align-items:center;padding:0 12px;gap:6px;flex-shrink:0;
       overflow-x:auto;-webkit-overflow-scrolling:touch;
     }
     .swatch{
@@ -66,32 +66,17 @@
     /* ── Workspace ── */
     #workspace{display:flex;flex:1;overflow:hidden;min-height:0}
 
-    /* ── Tool panel (left) ── */
-    #toolpanel{
-      width:40px;background:var(--bg1);border-right:1px solid var(--bd);
-      display:flex;flex-direction:column;align-items:center;
-      padding:4px 0 6px;gap:2px;flex-shrink:0;
-    }
+    /* ── Tool panel (hidden — tools live in bottom strip) ── */
+    #toolpanel{display:none}
     .tbtn{
-      width:34px;height:32px;background:transparent;border:1px solid transparent;
-      border-radius:3px;color:var(--txt2);cursor:pointer;
+      background:transparent;border:1px solid transparent;
+      border-radius:8px;color:var(--txt2);cursor:pointer;
       display:flex;align-items:center;justify-content:center;
       touch-action:manipulation;-webkit-tap-highlight-color:transparent;
       position:relative;flex-shrink:0;
     }
     .tbtn:hover{background:var(--bg2);color:var(--txt)}
-    .tbtn.on{background:var(--bg3);color:var(--txt);border-color:var(--bd)}
-    .tbtn.on::before{
-      content:'';position:absolute;left:0;top:5px;bottom:5px;
-      width:2px;background:var(--acc);border-radius:0 1px 1px 0;
-    }
     .tbtn svg{pointer-events:none}
-    #tpsep{flex:1}
-    #fgswatch{
-      width:22px;height:22px;border-radius:3px;border:2px solid var(--bd);
-      cursor:pointer;flex-shrink:0;touch-action:manipulation;
-    }
-    #fgswatch:hover{border-color:var(--txt2)}
 
     /* ── Canvas area ── */
     #cwrap{
@@ -176,19 +161,16 @@
     .lvis.off{color:#444}
     .lnm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 
-    /* ── Mobile tool strip ── */
+    /* ── Tool strip (always visible, bottom) ── */
     #toolstrip{
-      display:none;height:44px;background:var(--bg1);
+      display:flex;height:60px;background:var(--bg1);
       border-top:1px solid var(--bd);
-      overflow-x:auto;-webkit-overflow-scrolling:touch;
-      flex-shrink:0;align-items:center;padding:0 6px;gap:2px;
+      flex-shrink:0;align-items:center;justify-content:center;
+      padding:0 16px;gap:6px;
     }
-    #toolstrip .tbtn{width:40px;height:38px;flex-shrink:0}
-    #toolstrip .tbtn.on::before{
-      left:8px;right:8px;width:auto;
-      top:auto;bottom:0;height:2px;
-      border-radius:1px 1px 0 0;
-    }
+    #toolstrip .tbtn{width:48px;height:48px;border-radius:12px;flex-shrink:0}
+    #toolstrip .tbtn.on{background:var(--acc);border-color:transparent;color:#fff}
+    #toolstrip .tbtn.on::before{display:none}
 
     /* ── Status bar ── */
     #statusbar{
@@ -198,10 +180,9 @@
     }
     #statusbar span{font-size:10px;color:var(--txt2)}
 
-    /* ── Mobile breakpoint ── */
-    @media(max-width:560px){
-      #toolpanel{display:none}
-      #toolstrip{display:flex}
+    @media(max-width:480px){
+      #toolstrip{gap:3px;padding:0 8px}
+      #toolstrip .tbtn{width:42px;height:42px}
       #swid{width:52px}
       #sopa{width:44px}
     }
@@ -257,26 +238,6 @@
   <input type="file" id="fi" accept="image/*" style="display:none">
 </div>
 
-<!-- ── Options bar ── -->
-<div id="optbar">
-  <div class="swatch on" style="background:#ff3b30" data-c="#ff3b30" title="Red"></div>
-  <div class="swatch" style="background:#ff9500" data-c="#ff9500" title="Orange"></div>
-  <div class="swatch" style="background:#ffcc00" data-c="#ffcc00" title="Yellow"></div>
-  <div class="swatch" style="background:#30d158" data-c="#30d158" title="Green"></div>
-  <div class="swatch" style="background:#0a84ff" data-c="#0a84ff" title="Blue"></div>
-  <div class="swatch" style="background:#bf5af2" data-c="#bf5af2" title="Purple"></div>
-  <div class="swatch" style="background:#ffffff;border-color:var(--bd)" data-c="#ffffff" title="White"></div>
-  <input type="color" id="cpick" value="#ff3b30" title="Custom colour">
-  <div class="osep"></div>
-  <span class="olbl">SW</span>
-  <input type="range" id="swid" min="1" max="30" value="3" title="Stroke width">
-  <span class="oval" id="swval">3</span>
-  <div class="osep"></div>
-  <span class="olbl">OP</span>
-  <input type="range" id="sopa" min="10" max="100" value="100" title="Opacity">
-  <span class="oval" id="opval">100%</span>
-</div>
-
 <!-- ── Workspace ── -->
 <div id="workspace">
 
@@ -329,28 +290,47 @@
   <div id="ll"></div>
 </div>
 
-<!-- ── Mobile tool strip (≤560px) ── -->
+<!-- ── Options bar ── -->
+<div id="optbar">
+  <div class="swatch on" style="background:#ff3b30" data-c="#ff3b30" title="Red"></div>
+  <div class="swatch" style="background:#ff9500" data-c="#ff9500" title="Orange"></div>
+  <div class="swatch" style="background:#ffcc00" data-c="#ffcc00" title="Yellow"></div>
+  <div class="swatch" style="background:#30d158" data-c="#30d158" title="Green"></div>
+  <div class="swatch" style="background:#0a84ff" data-c="#0a84ff" title="Blue"></div>
+  <div class="swatch" style="background:#bf5af2" data-c="#bf5af2" title="Purple"></div>
+  <div class="swatch" style="background:#ffffff;border-color:var(--bd)" data-c="#ffffff" title="White"></div>
+  <input type="color" id="cpick" value="#ff3b30" title="Custom colour">
+  <div class="osep"></div>
+  <span class="olbl">SW</span>
+  <input type="range" id="swid" min="1" max="30" value="3" title="Stroke width">
+  <span class="oval" id="swval">3</span>
+  <div class="osep"></div>
+  <span class="olbl">OP</span>
+  <input type="range" id="sopa" min="10" max="100" value="100" title="Opacity">
+  <span class="oval" id="opval">100%</span>
+</div>
+
 <div id="toolstrip">
-  <button class="tbtn" data-tool="select" title="Select">
-    <svg width="15" height="15"><use href="#ico-select"/></svg>
+  <button class="tbtn" data-tool="select" title="Select (V)">
+    <svg width="17" height="17"><use href="#ico-select"/></svg>
   </button>
-  <button class="tbtn on" data-tool="pencil" title="Pencil">
-    <svg width="15" height="15"><use href="#ico-pencil"/></svg>
+  <button class="tbtn on" data-tool="pencil" title="Pencil (P)">
+    <svg width="17" height="17"><use href="#ico-pencil"/></svg>
   </button>
-  <button class="tbtn" data-tool="rectangle" title="Rectangle">
-    <svg width="15" height="15"><use href="#ico-rect"/></svg>
+  <button class="tbtn" data-tool="rectangle" title="Rectangle (R)">
+    <svg width="17" height="17"><use href="#ico-rect"/></svg>
   </button>
-  <button class="tbtn" data-tool="ellipse" title="Ellipse">
-    <svg width="15" height="15"><use href="#ico-ellipse"/></svg>
+  <button class="tbtn" data-tool="ellipse" title="Ellipse (E)">
+    <svg width="17" height="17"><use href="#ico-ellipse"/></svg>
   </button>
-  <button class="tbtn" data-tool="arrow" title="Arrow">
-    <svg width="15" height="15"><use href="#ico-arrow"/></svg>
+  <button class="tbtn" data-tool="arrow" title="Arrow (A)">
+    <svg width="17" height="17"><use href="#ico-arrow"/></svg>
   </button>
-  <button class="tbtn" data-tool="text" title="Text">
-    <svg width="15" height="15"><use href="#ico-text"/></svg>
+  <button class="tbtn" data-tool="text" title="Text (T)">
+    <svg width="17" height="17"><use href="#ico-text"/></svg>
   </button>
-  <button class="tbtn" data-tool="eraser" title="Eraser">
-    <svg width="15" height="15"><use href="#ico-eraser"/></svg>
+  <button class="tbtn" data-tool="eraser" title="Eraser (X)">
+    <svg width="17" height="17"><use href="#ico-eraser"/></svg>
   </button>
 </div>
 
