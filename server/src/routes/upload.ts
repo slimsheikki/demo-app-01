@@ -72,6 +72,12 @@ router.post('/', async (c) => {
       });
     });
 
+    bb.on('finish', () => {
+      if (!saved) {
+        resolve(c.json({ error: 'No file received' }, 400));
+      }
+    });
+
     bb.on('error', (err) => {
       resolve(c.json({ error: String(err) }, 500));
     });

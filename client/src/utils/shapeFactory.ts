@@ -46,7 +46,7 @@ export function createArrowShape(
 }
 
 export function createTextShape(
-  opts: BaseOpts & { x: number; y: number; fontSize: number }
+  opts: BaseOpts & { x: number; y: number; fontSize: number; text?: string }
 ): TextShape {
   return { id: nanoid(), type: 'text', text: 'Text', fontFamily: 'sans-serif', ...opts };
 }
