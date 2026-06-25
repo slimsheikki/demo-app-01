@@ -388,6 +388,14 @@
   .layer-row:last-child { border-bottom: none; }
   .layer-row:hover { background: rgba(255,255,255,0.03); }
 
+  .layers-empty {
+    padding: 14px 10px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+    text-align: center;
+    letter-spacing: 0.02em;
+  }
+
   .layer-eye {
     flex-shrink: 0;
     width: 26px;
@@ -964,10 +972,11 @@
         document.getElementById('colorPicker').style.display = 'flex';
         stageEl.classList.add('grabbable');
 
-        // Let layout settle, then size the stage and fit
+        // Let layout settle, then size the stage and fit; show layers panel
         requestAnimationFrame(function () {
           resizeStage();
           fitToScreen();
+          renderLayersPanel();
         });
       };
 
@@ -1013,6 +1022,10 @@
         document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
       }
+      // Keep annotation groups draggable only in pan mode
+      annotations.forEach(function (ann) {
+        if (ann.konvaGroup) ann.konvaGroup.draggable(tool === 'pan');
+      });
     }
 
     // ---- Custom HSV color picker panel (always visible) ----
@@ -1268,13 +1281,15 @@
 
     function getAnnotationBBox(ann) {
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      ann.konvaLayer.find('Line').forEach(function (line) {
+      var gx = ann.konvaGroup ? ann.konvaGroup.x() : 0;
+      var gy = ann.konvaGroup ? ann.konvaGroup.y() : 0;
+      (ann.konvaGroup || ann.konvaLayer).find('Line').forEach(function (line) {
         var pts = line.points();
         for (var i = 0; i < pts.length; i += 2) {
-          minX = Math.min(minX, pts[i]);
-          maxX = Math.max(maxX, pts[i]);
-          minY = Math.min(minY, pts[i + 1]);
-          maxY = Math.max(maxY, pts[i + 1]);
+          minX = Math.min(minX, pts[i] + gx);
+          maxX = Math.max(maxX, pts[i] + gx);
+          minY = Math.min(minY, pts[i + 1] + gy);
+          maxY = Math.max(maxY, pts[i + 1] + gy);
         }
       });
       if (!isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0, cx: 0, cy: 0 };
@@ -1326,25 +1341,33 @@
       stage.add(annLayer);
       stagingLayer.moveToTop();
 
-      // Move strokes from staging to the new annotation layer
+      // Group makes the annotation draggable as a unit
+      var annGroup = new Konva.Group({ draggable: currentTool === 'pan' });
+      annLayer.add(annGroup);
+
+      // Move strokes from staging into the group
       stagingStrokes.forEach(function (line) {
         line.remove();
         line.listening(true);
-        annLayer.add(line);
+        annGroup.add(line);
       });
       stagingStrokes = [];
 
-      // Click on any stroke in pan mode opens the comment box for this annotation
-      annLayer.on('click tap', function () {
+      // Click on any stroke in pan mode opens the comment box; ignore if the user just finished dragging
+      var dragMoved = false;
+      annGroup.on('dragmove', function () { dragMoved = true; });
+      annGroup.on('dragstart', function () { dragMoved = false; });
+      annGroup.on('click tap', function () {
+        if (dragMoved) { dragMoved = false; return; }
         if (currentTool !== 'pan') return;
-        var a = annotations.filter(function (x) { return x.konvaLayer === annLayer; })[0];
+        var a = annotations.filter(function (x) { return x.konvaGroup === annGroup; })[0];
         if (a) openAnnotationComment(a);
       });
 
       annLayer.batchDraw();
       stagingLayer.batchDraw();
 
-      annotations.push({ name: annName, color: color, konvaLayer: annLayer, visible: true, text: text || '' });
+      annotations.push({ name: annName, color: color, konvaLayer: annLayer, konvaGroup: annGroup, visible: true, text: text || '' });
       // Add committed color to recents
       var hexLow = color.toLowerCase();
       var idx = recentColors.indexOf(hexLow);
@@ -1360,7 +1383,7 @@
 
     // ---- Layers panel ----
     function renderLayersPanel() {
-      if (annotations.length === 0) { layersPanel.classList.remove('show'); return; }
+      if (!imageNode) return;
       if (!layersPanelPositioned) {
         layersPanelPositioned = true;
         layersAttachedToColorPicker = true;
@@ -1378,6 +1401,10 @@
         });
       } else {
         layersPanel.classList.add('show');
+      }
+      if (annotations.length === 0) {
+        layersList.innerHTML = '<div class="layers-empty">Draw to add annotations</div>';
+        return;
       }
       layersList.innerHTML = '';
       for (var i = annotations.length - 1; i >= 0; i--) {
