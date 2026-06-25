@@ -735,15 +735,27 @@
       zoomTo(stage.scaleX() * factor, null);
     }
 
-    // Fit the image to the viewport and center it
+    // Fit the image to the viewport and center it. The top toolbar and the
+    // bottom zoom bar are horizontally centered, so they only constrain the
+    // image vertically — reserve their height so the image stays fully visible
+    // between them instead of slipping underneath.
     function fitToScreen() {
       if (!imageNode) return;
       var sw = stage.width(), sh = stage.height();
-      var scale = clamp(Math.min(sw / imgW, sh / imgH) * FIT_PADDING);
+      var gap = 14;
+      var topInset = 0, bottomInset = 0;
+      if (toolbar.classList.contains('show')) {
+        topInset = toolbar.getBoundingClientRect().bottom + gap;
+      }
+      if (controls.classList.contains('show')) {
+        bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
+      }
+      var availH = Math.max(40, sh - topInset - bottomInset);
+      var scale = clamp(Math.min(sw / imgW, availH / imgH) * FIT_PADDING);
       stage.scale({ x: scale, y: scale });
       stage.position({
         x: (sw - imgW * scale) / 2,
-        y: (sh - imgH * scale) / 2
+        y: topInset + (availH - imgH * scale) / 2
       });
       stage.batchDraw();
       updateZoomLabel();
