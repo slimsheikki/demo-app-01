@@ -862,7 +862,9 @@
           fontSize: 12,
           lineHeight: 1.5,
           fill: 'rgba(255,255,255,0.92)',
-          padding: 9
+          padding: 9,
+          width: 220,        // wrap long comments instead of one endless line
+          wrap: 'word'
         }));
         annLayer.add(label);
       }
