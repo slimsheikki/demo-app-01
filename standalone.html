@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Annotation Tool</title>
+  <script src="https://cdn.jsdelivr.net/npm/konva@9/konva.min.js"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#111;color:#fff;font-family:-apple-system,BlinkMacSystemFont,sans-serif;height:100dvh;display:flex;flex-direction:column;overflow:hidden;user-select:none}
+    /* ── Toolbar ── */
+    #toolbar{display:flex;align-items:center;gap:3px;padding:5px 8px;background:#1e1e1e;border-bottom:1px solid #333;overflow-x:auto;flex-shrink:0;-webkit-overflow-scrolling:touch}
+    .tbtn{background:#2a2a2a;border:1.5px solid transparent;border-radius:6px;color:#bbb;cursor:pointer;font-size:15px;padding:6px 8px;min-width:34px;text-align:center;touch-action:manipulation;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+    .tbtn:active,.tbtn.on{border-color:#4a9eff;color:#fff;background:#1a3a60}
+    .sep{width:1px;height:26px;background:#333;flex-shrink:0;margin:0 2px}
+    .swatch{width:22px;height:22px;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0;touch-action:manipulation}
+    .swatch.on{border-color:#fff}
+    #cpick{width:26px;height:26px;border-radius:4px;border:none;cursor:pointer;padding:0;background:none;flex-shrink:0}
+    #swid{width:70px;accent-color:#4a9eff;flex-shrink:0}
+    #openBtn{background:#4a9eff;border:none;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;padding:6px 10px;white-space:nowrap;touch-action:manipulation;margin-left:auto;flex-shrink:0}
+    /* ── Main ── */
+    #main{display:flex;flex:1;overflow:hidden}
+    #cwrap{flex:1;overflow:hidden;background:#0a0a0a;display:flex;align-items:center;justify-content:center;position:relative}
+    /* ── Drop zone ── */
+    #dz{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#555;gap:10px;font-size:14px;cursor:pointer}
+    #dz .ico{font-size:52px}
+    #dz.hide{display:none}
+    /* ── Layers ── */
+    #lp{width:170px;background:#191919;border-left:1px solid #2a2a2a;display:flex;flex-direction:column;flex-shrink:0}
+    #lhdr{padding:7px 10px;border-bottom:1px solid #2a2a2a;display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.06em}
+    #addL{background:#2a2a2a;border:none;border-radius:4px;color:#ccc;cursor:pointer;font-size:18px;line-height:1.2;padding:0 5px;touch-action:manipulation}
+    #ll{flex:1;overflow-y:auto}
+    .lr{display:flex;align-items:center;gap:5px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #222;font-size:13px;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .lr.on{background:#1a3a60}
+    .lr:not(.on):active{background:#222}
+    .lvis{background:none;border:none;color:#777;cursor:pointer;font-size:13px;padding:0;line-height:1;touch-action:manipulation;flex-shrink:0}
+    .lvis.off{color:#3a3a3a}
+    .lnm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+    /* ── Text overlay ── */
+    #txtwrap{position:absolute;display:none;z-index:50}
+    #txtin{background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.35);border-radius:4px;color:#fff;outline:none;padding:3px 6px;min-width:110px;font-family:sans-serif}
+    /* ── Opacity slider ── */
+    #sopa{width:60px;accent-color:#4a9eff;flex-shrink:0}
+    @media(max-width:500px){#lp{width:130px}#swid{width:55px}#sopa{width:45px}.tbtn{padding:5px 6px;min-width:30px}}
+  </style>
+</head>
+<body>
+<div id="toolbar">
+  <button class="tbtn on" data-tool="pencil" title="Pencil (P)">✏️</button>
+  <button class="tbtn" data-tool="rectangle" title="Rectangle (R)">▭</button>
+  <button class="tbtn" data-tool="ellipse" title="Ellipse (E)">⬭</button>
+  <button class="tbtn" data-tool="arrow" title="Arrow (A)">↗</button>
+  <button class="tbtn" data-tool="text" title="Text (T)">T</button>
+  <button class="tbtn" data-tool="select" title="Select (V)">↖</button>
+  <button class="tbtn" data-tool="eraser" title="Eraser (X)">⌫</button>
+
+  <div class="sep"></div>
+
+  <div class="swatch on" style="background:#ff3b30" data-c="#ff3b30"></div>
+  <div class="swatch" style="background:#ff9500" data-c="#ff9500"></div>
+  <div class="swatch" style="background:#ffcc00" data-c="#ffcc00"></div>
+  <div class="swatch" style="background:#30d158" data-c="#30d158"></div>
+  <div class="swatch" style="background:#0a84ff" data-c="#0a84ff"></div>
+  <div class="swatch" style="background:#bf5af2" data-c="#bf5af2"></div>
+  <div class="swatch" style="background:#ffffff;border-color:#444" data-c="#ffffff"></div>
+  <input type="color" id="cpick" value="#ff3b30" title="Custom colour">
+
+  <div class="sep"></div>
+
+  <input type="range" id="swid" min="1" max="30" value="3" title="Stroke width">
+  <input type="range" id="sopa" min="10" max="100" value="100" title="Opacity">
+
+  <div class="sep"></div>
+
+  <button class="tbtn" id="undoBtn" title="Undo (Cmd/Ctrl+Z)">↩</button>
+
+  <button id="openBtn">📂 Open image</button>
+  <input type="file" id="fi" accept="image/*" style="display:none">
+</div>
+
+<div id="main">
+  <div id="cwrap">
+    <div id="dz">
+      <div class="ico">🖼️</div>
+      <div>Drop an image here</div>
+      <div style="font-size:12px;color:#444">or tap "Open image"</div>
+    </div>
+    <div id="kc"></div>
+    <div id="txtwrap"><input id="txtin" type="text" placeholder="Type text…"></div>
+  </div>
+
+  <div id="lp">
+    <div id="lhdr">Layers <button id="addL" title="Add layer">+</button></div>
+    <div id="ll"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let tool = 'pencil', color = '#ff3b30', sw = 3, opacity = 1, fontSize = 22;
+let layers = [], activeId = null, shapeMap = {};
+let undoStack = [], MAX_UNDO = 50;
+let stage = null, imgLayer = null, drawLayer = null, trLayer = null, tr = null;
+let imgW = 0, imgH = 0;
+let drawing = false, anchor = {x:0,y:0}, pts = [], mc = 0;
+let curNode = null, curData = null;
+let selNode = null;
+let txtPos = null;
+const ERASE_R = 24;
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2,10);
+
+function getPos() {
+  if (!stage) return null;
+  const p = stage.getPointerPosition();
+  if (!p) return null;
+  const s = stage.scaleX();
+  return {x: p.x/s, y: p.y/s};
+}
+
+function activeLayer() { return layers.find(l => l.id === activeId); }
+function activeKL()    { return activeLayer()?.kl ?? null; }
+
+// ── Stage Init ─────────────────────────────────────────────────────────────
+function initStage(w, h) {
+  if (stage) stage.destroy();
+  const wrap = document.getElementById('cwrap');
+  const sc = Math.min(wrap.clientWidth / w, wrap.clientHeight / h, 1);
+
+  stage = new Konva.Stage({container:'kc', width: w*sc, height: h*sc, scaleX: sc, scaleY: sc});
+
+  imgLayer = new Konva.Layer({listening:false});
+  stage.add(imgLayer);
+
+  layers.forEach(l => {
+    l.kl = new Konva.Layer();
+    stage.add(l.kl);
+    Object.values(shapeMap).filter(s=>s.lid===l.id).forEach(s => addNodeFromData(s, l.kl));
+    l.kl.listening(l.id === activeId);
+  });
+
+  drawLayer = new Konva.Layer({listening:false});
+  trLayer   = new Konva.Layer();
+  tr = new Konva.Transformer({rotateEnabled:false, boundBoxFunc:(_,nb)=>nb});
+  trLayer.add(tr);
+  stage.add(drawLayer);
+  stage.add(trLayer);
+
+  tr.on('transformend', onTransformEnd);
+
+  stage.on('mousedown touchstart',  onDown);
+  stage.on('mousemove touchmove',   onMove);
+  stage.on('mouseup touchend mouseleave', onUp);
+}
+
+// ── Image Loading ──────────────────────────────────────────────────────────
+function loadFile(file) {
+  if (!file?.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    imgW = img.naturalWidth; imgH = img.naturalHeight;
+    shapeMap = {}; layers = []; undoStack = []; selNode = null; activeId = null;
+    document.getElementById('dz').classList.add('hide');
+    initStage(imgW, imgH);
+    imgLayer.add(new Konva.Image({image:img, x:0, y:0, width:imgW, height:imgH}));
+    imgLayer.draw();
+    addLayer('Layer 1');
+  };
+  img.src = url;
+}
+
+// ── Layer Management ───────────────────────────────────────────────────────
+function addLayer(name) {
+  if (!stage) return;
+  const id = uid();
+  const kl = new Konva.Layer();
+  stage.add(kl);
+  // Keep draw/tr on top
+  drawLayer.moveToTop(); trLayer.moveToTop();
+  const meta = {id, name: name || `Layer ${layers.length+1}`, visible:true, kl};
+  layers.push(meta);
+  setActive(id);
+}
+
+function setActive(id) {
+  clearSel();
+  activeId = id;
+  layers.forEach(l => l.kl.listening(l.id === id));
+  renderLayers();
+}
+
+function toggleVis(id) {
+  const l = layers.find(l=>l.id===id);
+  if (!l) return;
+  l.visible = !l.visible;
+  l.kl.visible(l.visible);
+  l.kl.draw();
+  renderLayers();
+}
+
+function renderLayers() {
+  const ll = document.getElementById('ll');
+  ll.innerHTML = '';
+  [...layers].reverse().forEach(l => {
+    const row = document.createElement('div');
+    row.className = 'lr' + (l.id===activeId?' on':'');
+
+    const vis = document.createElement('button');
+    vis.className = 'lvis' + (l.visible?'':' off');
+    vis.textContent = l.visible ? '👁' : '○';
+    vis.onclick = e => { e.stopPropagation(); toggleVis(l.id); };
+
+    const nm = document.createElement('div');
+    nm.className = 'lnm';
+    nm.textContent = l.name;
+
+    row.append(vis, nm);
+    row.onclick = () => setActive(l.id);
+    ll.appendChild(row);
+  });
+}
+
+// ── Shape Node Building ────────────────────────────────────────────────────
+function buildNode(s) {
+  const c = {id:s.id, opacity:s.op??1, strokeScaleEnabled:false};
+  switch(s.type) {
+    case 'pencil':    return new Konva.Line({...c, points:s.pts, stroke:s.col, strokeWidth:s.sw, tension:.5, lineCap:'round', lineJoin:'round'});
+    case 'rectangle': return new Konva.Rect({...c, x:s.x, y:s.y, width:s.w, height:s.h, stroke:s.col, strokeWidth:s.sw, fill:'transparent'});
+    case 'ellipse':   return new Konva.Ellipse({...c, x:s.x, y:s.y, radiusX:s.rx, radiusY:s.ry, stroke:s.col, strokeWidth:s.sw, fill:'transparent'});
+    case 'arrow':     return new Konva.Arrow({...c, points:s.pts, stroke:s.col, strokeWidth:s.sw, fill:s.col, pointerLength:12, pointerWidth:10});
+    case 'text':      return new Konva.Text({...c, x:s.x, y:s.y, text:s.txt, fontSize:s.fs, fontFamily:'sans-serif', fill:s.col});
+    default: return null;
+  }
+}
+
+function addNodeFromData(s, kl) {
+  const node = buildNode(s);
+  if (!node) return;
+  kl.add(node);
+  node.on('click tap', () => { if (tool==='select') pickNode(node, s.id); });
+  return node;
+}
+
+function commitShape(data) {
+  shapeMap[data.id] = data;
+  const kl = activeKL();
+  if (!kl) return;
+  addNodeFromData(data, kl);
+  kl.draw();
+}
+
+// ── Select / Transform ─────────────────────────────────────────────────────
+function clearSel() {
+  if (selNode) { selNode.draggable(false); }
+  tr?.nodes([]);
+  selNode = null;
+  trLayer?.draw();
+}
+
+function pickNode(node, id) {
+  clearSel();
+  selNode = node;
+  const s = shapeMap[id];
+  if (!s) return;
+  node.draggable(true);
+  if (s.type==='rectangle'||s.type==='ellipse') tr.nodes([node]);
+  else tr.nodes([]);
+  trLayer.draw();
+
+  // Save position on drag end
+  node.on('dragend.sel', () => {
+    if (!shapeMap[id]) return;
+    if (s.type==='text'||s.type==='rectangle'||s.type==='ellipse') {
+      shapeMap[id] = {...shapeMap[id], x:node.x(), y:node.y()};
+    }
+  });
+}
+
+function onTransformEnd() {
+  tr.nodes().forEach(node => {
+    const id = node.id();
+    const s = shapeMap[id];
+    if (!s) return;
+    if (s.type==='rectangle') {
+      shapeMap[id] = {...s, x:node.x(), y:node.y(), w:node.width()*node.scaleX(), h:node.height()*node.scaleY()};
+    } else if (s.type==='ellipse') {
+      shapeMap[id] = {...s, x:node.x(), y:node.y(), rx:(node.width()*node.scaleX())/2, ry:(node.height()*node.scaleY())/2};
+    }
+    node.scaleX(1); node.scaleY(1);
+  });
+}
+
+// ── Drawing ────────────────────────────────────────────────────────────────
+function onDown(e) {
+  if (!stage || !activeId) return;
+  const al = activeLayer();
+  if (!al || !al.visible) return;
+  const pos = getPos();
+  if (!pos) return;
+
+  if (tool==='select') {
+    if (e.target===stage||e.target===imgLayer.getChildren()[0]) clearSel();
+    return;
+  }
+  if (tool==='text') { showText(pos); return; }
+  if (tool==='eraser') { saveUndo(); eraseAt(pos); drawing=true; return; }
+
+  saveUndo();
+  drawing=true; anchor={...pos}; pts=[pos.x,pos.y]; mc=0;
+  const id=uid(), base={id, lid:activeId, col:color, sw, op:opacity};
+
+  switch(tool) {
+    case 'pencil':
+      curData={...base,type:'pencil',pts:[pos.x,pos.y]};
+      curNode=new Konva.Line({id,stroke:color,strokeWidth:sw,tension:.5,lineCap:'round',lineJoin:'round',points:[pos.x,pos.y],strokeScaleEnabled:false,opacity});
+      break;
+    case 'rectangle':
+      curData={...base,type:'rectangle',x:pos.x,y:pos.y,w:0,h:0};
+      curNode=new Konva.Rect({id,x:pos.x,y:pos.y,width:0,height:0,stroke:color,strokeWidth:sw,fill:'transparent',strokeScaleEnabled:false,opacity});
+      break;
+    case 'ellipse':
+      curData={...base,type:'ellipse',x:pos.x,y:pos.y,rx:0,ry:0};
+      curNode=new Konva.Ellipse({id,x:pos.x,y:pos.y,radiusX:0,radiusY:0,stroke:color,strokeWidth:sw,fill:'transparent',strokeScaleEnabled:false,opacity});
+      break;
+    case 'arrow':
+      curData={...base,type:'arrow',pts:[pos.x,pos.y,pos.x,pos.y]};
+      curNode=new Konva.Arrow({id,points:[pos.x,pos.y,pos.x,pos.y],stroke:color,strokeWidth:sw,fill:color,pointerLength:12,pointerWidth:10,strokeScaleEnabled:false,opacity});
+      break;
+  }
+  if (curNode) { drawLayer.add(curNode); drawLayer.draw(); }
+}
+
+function onMove(e) {
+  if (!drawing) return;
+  const pos = getPos();
+  if (!pos) return;
+
+  if (tool==='eraser') { eraseAt(pos); return; }
+  if (!curNode||!curData) return;
+  mc++;
+
+  if (tool==='pencil') {
+    if (mc%2===0) { pts.push(pos.x,pos.y); curNode.points([...pts]); curData.pts=[...pts]; }
+  } else if (tool==='rectangle') {
+    const x=Math.min(anchor.x,pos.x), y=Math.min(anchor.y,pos.y);
+    const w=Math.abs(pos.x-anchor.x), h=Math.abs(pos.y-anchor.y);
+    curNode.x(x);curNode.y(y);curNode.width(w);curNode.height(h);
+    Object.assign(curData,{x,y,w,h});
+  } else if (tool==='ellipse') {
+    const rx=Math.abs(pos.x-anchor.x), ry=Math.abs(pos.y-anchor.y);
+    curNode.radiusX(rx);curNode.radiusY(ry);
+    Object.assign(curData,{rx,ry});
+  } else if (tool==='arrow') {
+    curNode.points([anchor.x,anchor.y,pos.x,pos.y]);
+    curData.pts=[anchor.x,anchor.y,pos.x,pos.y];
+  }
+  drawLayer.draw();
+}
+
+function onUp() {
+  if (!drawing) return;
+  drawing=false;
+  if (tool==='eraser') return;
+  if (!curNode||!curData) { curNode=null;curData=null; return; }
+
+  let ok=true;
+  const s=curData;
+  if (s.type==='pencil'&&s.pts.length<4) ok=false;
+  if (s.type==='rectangle'&&(s.w<2||s.h<2)) ok=false;
+  if (s.type==='ellipse'&&(s.rx<2||s.ry<2)) ok=false;
+  if (s.type==='arrow'&&Math.abs(s.pts[2]-s.pts[0])<2&&Math.abs(s.pts[3]-s.pts[1])<2) ok=false;
+
+  curNode.remove(); drawLayer.draw();
+  if (ok) commitShape(curData);
+  curNode=null; curData=null;
+}
+
+// ── Eraser ─────────────────────────────────────────────────────────────────
+function bbox(s) {
+  if (s.type==='rectangle') return {x:s.x,y:s.y,w:s.w,h:s.h};
+  if (s.type==='ellipse')   return {x:s.x-s.rx,y:s.y-s.ry,w:s.rx*2,h:s.ry*2};
+  if (s.type==='arrow')     return {x:Math.min(s.pts[0],s.pts[2]),y:Math.min(s.pts[1],s.pts[3]),w:Math.abs(s.pts[2]-s.pts[0]),h:Math.abs(s.pts[3]-s.pts[1])};
+  if (s.type==='text')      return {x:s.x,y:s.y,w:s.fs*(s.txt?.length||1)*.6,h:s.fs};
+  return {x:0,y:0,w:0,h:0};
+}
+
+function eraseAt(pos) {
+  const r=ERASE_R, kl=activeKL();
+  if (!kl) return;
+  Object.values(shapeMap).filter(s=>s.lid===activeId).forEach(s=>{
+    let hit=false;
+    if (s.type==='pencil') {
+      for (let i=0;i<s.pts.length;i+=2){const dx=s.pts[i]-pos.x,dy=s.pts[i+1]-pos.y;if(dx*dx+dy*dy<=r*r){hit=true;break;}}
+    } else {
+      const b=bbox(s);
+      hit=pos.x>=b.x-r&&pos.x<=b.x+b.w+r&&pos.y>=b.y-r&&pos.y<=b.y+b.h+r;
+    }
+    if (hit) {
+      delete shapeMap[s.id];
+      kl.findOne('#'+s.id)?.destroy();
+    }
+  });
+  kl.draw();
+}
+
+// ── Text ───────────────────────────────────────────────────────────────────
+function showText(pos) {
+  txtPos = pos;
+  const wrap=document.getElementById('txtwrap'), inp=document.getElementById('txtin');
+  const sb=stage.container().getBoundingClientRect(), cb=document.getElementById('cwrap').getBoundingClientRect();
+  const sc=stage.scaleX();
+  wrap.style.display='block';
+  wrap.style.left=(sb.left-cb.left+pos.x*sc)+'px';
+  wrap.style.top=(sb.top-cb.top+pos.y*sc)+'px';
+  inp.style.fontSize=(fontSize*sc)+'px';
+  inp.style.color=color;
+  inp.value='';
+  requestAnimationFrame(()=>inp.focus());
+}
+
+function commitText() {
+  const inp=document.getElementById('txtin');
+  const txt=inp.value.trim();
+  document.getElementById('txtwrap').style.display='none';
+  if (!txt||!txtPos) { txtPos=null; return; }
+  saveUndo();
+  const id=uid();
+  commitShape({id,lid:activeId,type:'text',x:txtPos.x,y:txtPos.y,txt,fs:fontSize,col:color,sw:0,op:opacity});
+  txtPos=null;
+}
+
+document.getElementById('txtin').addEventListener('keydown', e=>{
+  if (e.key==='Enter'){e.preventDefault();commitText();}
+  if (e.key==='Escape'){document.getElementById('txtwrap').style.display='none';txtPos=null;}
+});
+document.getElementById('txtin').addEventListener('blur', commitText);
+
+// ── Undo ───────────────────────────────────────────────────────────────────
+function saveUndo() {
+  undoStack.push({
+    shapes: JSON.stringify(shapeMap),
+    layers: layers.map(l=>({id:l.id,name:l.name,visible:l.visible})),
+    activeId,
+  });
+  if (undoStack.length>MAX_UNDO) undoStack.shift();
+}
+
+function undo() {
+  if (!undoStack.length||!stage) return;
+  const snap=undoStack.pop();
+  shapeMap=JSON.parse(snap.shapes);
+  activeId=snap.activeId;
+  clearSel();
+
+  snap.layers.forEach(meta=>{
+    const l=layers.find(l=>l.id===meta.id);
+    if (!l) return;
+    l.visible=meta.visible;
+    l.kl.visible(l.visible);
+    l.kl.destroyChildren();
+    Object.values(shapeMap).filter(s=>s.lid===l.id).forEach(s=>addNodeFromData(s,l.kl));
+    l.kl.draw();
+  });
+
+  layers.forEach(l=>l.kl.listening(l.id===activeId));
+  renderLayers();
+}
+
+// ── UI Wiring ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.tbtn[data-tool]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    tool=b.dataset.tool;
+    document.querySelectorAll('.tbtn[data-tool]').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    if (tool!=='select') clearSel();
+    const curs={pencil:'crosshair',rectangle:'crosshair',ellipse:'crosshair',arrow:'crosshair',text:'text',select:'default',eraser:'cell'};
+    if (stage) stage.container().style.cursor=curs[tool]||'crosshair';
+  });
+});
+
+document.querySelectorAll('.swatch').forEach(s=>{
+  s.addEventListener('click',()=>{
+    color=s.dataset.c;
+    document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
+    s.classList.add('on');
+    document.getElementById('cpick').value=color;
+  });
+});
+document.getElementById('cpick').addEventListener('input',e=>{
+  color=e.target.value;
+  document.querySelectorAll('.swatch').forEach(x=>x.classList.remove('on'));
+});
+document.getElementById('swid').addEventListener('input',e=>sw=+e.target.value);
+document.getElementById('sopa').addEventListener('input',e=>opacity=+e.target.value/100);
+
+document.getElementById('undoBtn').addEventListener('click',undo);
+document.getElementById('addL').addEventListener('click',()=>{ if(stage) addLayer(); });
+
+document.getElementById('openBtn').addEventListener('click',()=>document.getElementById('fi').click());
+document.getElementById('fi').addEventListener('change',e=>{
+  const f=e.target.files?.[0]; if(f) loadFile(f); e.target.value='';
+});
+
+const cwrap=document.getElementById('cwrap');
+cwrap.addEventListener('dragover',e=>e.preventDefault());
+cwrap.addEventListener('drop',e=>{ e.preventDefault(); loadFile(e.dataTransfer.files[0]); });
+document.getElementById('dz').addEventListener('click',()=>document.getElementById('fi').click());
+
+document.addEventListener('keydown',e=>{
+  if ((e.metaKey||e.ctrlKey)&&e.key==='z'){ e.preventDefault(); undo(); return; }
+  if (e.target.tagName==='INPUT') return;
+  const map={v:'select',p:'pencil',r:'rectangle',e:'ellipse',a:'arrow',t:'text',x:'eraser'};
+  if (!e.metaKey&&!e.ctrlKey&&map[e.key]) { document.querySelector(`[data-tool="${map[e.key]}"]`)?.click(); return; }
+  if ((e.key==='Delete'||e.key==='Backspace')&&selNode&&tool==='select') {
+    const id=selNode.id();
+    if (id&&shapeMap[id]) { saveUndo(); delete shapeMap[id]; selNode.destroy(); selNode=null; tr.nodes([]); activeKL()?.draw(); }
+  }
+});
+
+// ── Resize stage on window resize ─────────────────────────────────────────
+window.addEventListener('resize',()=>{
+  if (!stage||!imgW) return;
+  const wrap=document.getElementById('cwrap');
+  const sc=Math.min(wrap.clientWidth/imgW,wrap.clientHeight/imgH,1);
+  stage.width(imgW*sc); stage.height(imgH*sc);
+  stage.scaleX(sc); stage.scaleY(sc);
+  stage.draw();
+});
+</script>
+</body>
+</html>
