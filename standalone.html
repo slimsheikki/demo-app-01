@@ -1552,19 +1552,31 @@
       prevToolBeforeSpace = null;
     });
 
-    // Middle mouse button — hold to pan, release to restore tool
+    // Middle mouse button — hold to pan canvas; directly tracks stage position so no left-click simulation needed
     var middlePanning = false;
     var prevToolBeforeMiddle = null;
+    var mpStartX, mpStartY, mpStageX, mpStageY;
     window.addEventListener('mousedown', function (e) {
       if (e.button !== 1 || !imageNode || middlePanning) return;
       e.preventDefault();
       middlePanning = true;
       prevToolBeforeMiddle = currentTool;
       if (currentTool !== 'pan') setTool('pan');
+      mpStartX = e.clientX;
+      mpStartY = e.clientY;
+      mpStageX = stage.x();
+      mpStageY = stage.y();
+      stageEl.classList.add('grabbing');
+    });
+    window.addEventListener('mousemove', function (e) {
+      if (!middlePanning) return;
+      stage.position({ x: mpStageX + e.clientX - mpStartX, y: mpStageY + e.clientY - mpStartY });
+      stage.batchDraw();
     });
     window.addEventListener('mouseup', function (e) {
       if (e.button !== 1 || !middlePanning) return;
       middlePanning = false;
+      stageEl.classList.remove('grabbing');
       if (prevToolBeforeMiddle && prevToolBeforeMiddle !== 'pan') setTool(prevToolBeforeMiddle);
       prevToolBeforeMiddle = null;
     });
