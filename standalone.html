@@ -233,16 +233,15 @@
   #compareHandle {
     position: absolute;
     left: 50%;
-    top: 50%;
+    top: 50%;               /* both overridden by JS; grip box is the anchor on the line */
+    width: 40px;
+    height: 40px;
     transform: translate(-50%, -50%);
-    display: flex;
-    align-items: center;
-    gap: 10px;
     cursor: ew-resize;
   }
   .cmp-grip {
-    width: 40px;
-    height: 40px;
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
@@ -253,10 +252,12 @@
     align-items: center;
     justify-content: center;
     color: var(--txt);
-    flex: none;
   }
   .cmp-grip svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.8; fill: none; }
   .cmp-label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
     font-size: 10px;
     letter-spacing: 0.08em;
     font-weight: 600;
@@ -268,7 +269,10 @@
     -webkit-backdrop-filter: blur(8px);
     white-space: nowrap;
     user-select: none;
+    pointer-events: none;
   }
+  .cmp-before { right: calc(100% + 8px); }
+  .cmp-after  { left: calc(100% + 8px); }
   #compareBar {
     position: absolute;
     left: 50%;
@@ -1052,6 +1056,7 @@
       });
       stage.batchDraw();
       updateZoomLabel();
+      syncCompareUI();
     }
 
     function zoomByStep(factor) {
@@ -1082,6 +1087,7 @@
       });
       stage.batchDraw();
       updateZoomLabel();
+      syncCompareUI();
     }
 
     // ---- Load an image file ----
@@ -1149,11 +1155,7 @@
     window.addEventListener('resize', function () {
       resizeStage();
       repositionPanels();
-      if (compareMode) {
-        dividerX = Math.max(0, Math.min(window.innerWidth, dividerX));
-        positionDivider();
-        layer.batchDraw();
-      }
+      syncCompareUI();
     });
 
     // ---- Tool switching ----
@@ -1857,6 +1859,7 @@
       if (!middlePanning) return;
       stage.position({ x: mpStageX + e.clientX - mpStartX, y: mpStageY + e.clientY - mpStartY });
       stage.batchDraw();
+      syncCompareUI();
     });
     window.addEventListener('mouseup', function (e) {
       if (e.button !== 1 || !middlePanning) return;
@@ -2014,6 +2017,7 @@
         stage.position({ x: stage.x() + dx, y: stage.y() + dy });
         stage.batchDraw();
       }
+      syncCompareUI();
 
       lastDist = dist;
       lastCenter = center;
@@ -2026,6 +2030,7 @@
 
     // ---- Pan cursor feedback ----
     stage.on('dragstart', function () { stageEl.classList.add('grabbing'); });
+    stage.on('dragmove',  syncCompareUI);   // keep the before/after divider stuck to the image while panning
     stage.on('dragend',   function () { stageEl.classList.remove('grabbing'); });
 
     // ---- Double-click / double-tap to fit ----
@@ -2085,6 +2090,7 @@
     var compareInput   = document.getElementById('compareInput');
     var compareBtn     = document.getElementById('compareBtn');
     var compareDivider = document.getElementById('compareDivider');
+    var compareLine    = document.getElementById('compareLine');
     var compareHandle  = document.getElementById('compareHandle');
     var compareBar     = document.getElementById('compareBar');
     var compareName    = document.getElementById('compareName');
@@ -2092,19 +2098,48 @@
     var compareMode    = false;
     var compareGroup   = null;   // Konva.Group holding v2, clipped to one side of the divider
     var compareImgNode = null;
-    var dividerX       = 0;      // divider position, in screen pixels
+    var dividerImgX    = 0;      // divider position, anchored in IMAGE coordinates (moves with the image)
 
     // Reveal the new version (v2) to the RIGHT of the divider; v1 shows through on the left.
-    // Runs on every redraw, so it tracks pan/zoom automatically.
+    // Anchored in image space, so the split sticks to the image as it pans/zooms.
     function compareClip(ctx) {
-      var scale = stage.scaleX();
-      var clipX = (dividerX - stage.x()) / scale;   // divider, converted to image coords
-      clipX = Math.max(0, Math.min(imgW, clipX));
-      ctx.rect(clipX, 0, imgW - clipX, imgH);
+      var x = Math.max(0, Math.min(imgW, dividerImgX));
+      ctx.rect(x, 0, imgW - x, imgH);
     }
 
-    function positionDivider() {
-      compareDivider.style.left = dividerX + 'px';
+    // Position the HTML overlay (line, handle, labels, bar) from the current image transform.
+    function syncCompareUI() {
+      if (!compareMode) return;
+      var scale = stage.scaleX();
+      var vw = window.innerWidth, vh = window.innerHeight;
+      var x = Math.max(0, Math.min(imgW, dividerImgX));
+      var screenX  = stage.x() + x * scale;
+      var imgTop   = stage.y();
+      var imgBot   = stage.y() + imgH * scale;
+
+      // Divider strip follows the image column
+      compareDivider.style.left = screenX + 'px';
+
+      // White line spans only the image's (visible) vertical extent — no overflow past the image
+      var lineTop = Math.max(0, imgTop);
+      var lineBot = Math.min(vh, imgBot);
+      compareLine.style.top = lineTop + 'px';
+      compareLine.style.height = Math.max(0, lineBot - lineTop) + 'px';
+
+      // Grip centered on the visible portion of the line
+      compareHandle.style.top = ((lineTop + lineBot) / 2) + 'px';
+
+      // Compare bar: centered under the image, clamped so it stays reachable
+      var imgCenterX = stage.x() + (imgW * scale) / 2;
+      var halfBar = compareBar.offsetWidth / 2;
+      var barLeft = Math.max(halfBar + 8, Math.min(vw - halfBar - 8, imgCenterX));
+      var bottomBound = vh - compareBar.offsetHeight - 8;
+      if (controls.classList.contains('show')) {
+        bottomBound = Math.min(bottomBound, controls.getBoundingClientRect().top - compareBar.offsetHeight - 10);
+      }
+      var barTop = Math.max(8, Math.min(bottomBound, imgBot + 12));
+      compareBar.style.left = barLeft + 'px';
+      compareBar.style.top = barTop + 'px';
     }
 
     function enterCompare(img, name) {
@@ -2117,11 +2152,11 @@
       layer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
       compareGroup.moveToTop();
       compareMode = true;
-      dividerX = window.innerWidth / 2;
-      positionDivider();
+      dividerImgX = imgW / 2;    // start at the image's horizontal middle
       compareDivider.classList.add('show');
       compareBar.classList.add('show');
       compareName.textContent = name ? ('Before  ·  After — ' + name) : 'Before / After';
+      syncCompareUI();
       layer.batchDraw();
     }
 
@@ -2134,7 +2169,7 @@
       layer.batchDraw();
     }
 
-    // Drag the divider handle
+    // Drag the divider handle — converts the pointer's screen X back into an image coordinate
     (function () {
       var dragging = false;
       compareHandle.addEventListener('pointerdown', function (e) {
@@ -2144,8 +2179,9 @@
       });
       compareHandle.addEventListener('pointermove', function (e) {
         if (!dragging) return;
-        dividerX = Math.max(0, Math.min(window.innerWidth, e.clientX));
-        positionDivider();
+        var scale = stage.scaleX();
+        dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale));
+        syncCompareUI();
         layer.batchDraw();
       });
       compareHandle.addEventListener('pointerup', function () { dragging = false; });
