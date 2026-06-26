@@ -1148,6 +1148,7 @@
 
     window.addEventListener('resize', function () {
       resizeStage();
+      repositionPanels();
       if (compareMode) {
         dividerX = Math.max(0, Math.min(window.innerWidth, dividerX));
         positionDivider();
@@ -1922,6 +1923,37 @@
 
       header.addEventListener('pointercancel', function () { dragging = false; });
     })();
+
+    // ---- Keep floating panels inside the viewport on window resize ----
+    function clampIntoView(el) {
+      var w = el.offsetWidth, h = el.offsetHeight;
+      var r = el.getBoundingClientRect();
+      var m = 16; // same breathing room as the default corner padding
+      var left = Math.min(Math.max(r.left, m), Math.max(m, window.innerWidth - w - m));
+      var top  = Math.min(Math.max(r.top, m), Math.max(m, window.innerHeight - h - m));
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      el.style.right = 'auto';
+      el.style.transform = 'none';
+    }
+
+    function repositionPanels() {
+      if (!imageNode) return; // panels only exist once an image is loaded
+      var cp = document.getElementById('colorPicker');
+      // The color picker stays right-anchored (responsive) until dragged; only manage it once it's left-anchored.
+      if (cp.style.right === 'auto' && cp.style.left) clampIntoView(cp);
+      if (layersPanel.classList.contains('show')) {
+        if (layersAttachedToColorPicker) {
+          // Follow the color picker so the docked pair moves together
+          var r = cp.getBoundingClientRect();
+          layersPanel.style.left = r.left + 'px';
+          layersPanel.style.top = (r.bottom + 8) + 'px';
+          layersPanel.style.right = 'auto';
+          layersPanel.style.transform = 'none';
+        }
+        clampIntoView(layersPanel);
+      }
+    }
 
     // Auto-grow textarea (fallback for browsers without field-sizing: content)
     commentInput.addEventListener('input', function () {
