@@ -252,6 +252,8 @@
     box-shadow: inset 0 1px 3px rgba(0,0,0,0.25);
   }
   .tbtn svg { width: 19px; height: 19px; stroke: currentColor; stroke-width: 1.7; fill: none; }
+  .tbtn:disabled { opacity: 0.28; cursor: default; pointer-events: none; }
+  .tbar-divider { width: 1px; height: 22px; background: var(--glass-border); margin: 0 3px; flex: none; }
 
   /* ---- Commit / discard floating buttons ---- */
   #commitBar {
@@ -716,6 +718,19 @@
         <path d="M15.5 3.5a2.121 2.121 0 0 1 3 3L7 18l-4 1 1-4L15.5 3.5z" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
+    <span class="tbar-divider" aria-hidden="true"></span>
+    <button class="tbtn" id="undoBtn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 14L4 9l5-5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4 9h11a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+    <button class="tbtn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15 14l5-5-5-5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M20 9H9a5 5 0 0 0-5 5v0a5 5 0 0 0 5 5h6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </div>
 
   <!-- Commit / discard annotation -->
@@ -977,6 +992,7 @@
           resizeStage();
           fitToScreen();
           renderLayersPanel();
+          resetHistory();
         });
       };
 
@@ -1322,6 +1338,7 @@
     }
 
     function discardStaging() {
+      var had = stagingStrokes.length > 0;
       isDrawing = false;
       currentLine = null;
       stagingStrokes = [];
@@ -1329,6 +1346,7 @@
       stagingLayer.batchDraw();
       hideCommitBar();
       hideCommentBox();
+      if (had) recordHistory();
     }
 
     function commitAnnotation(text) {
@@ -1353,21 +1371,13 @@
       });
       stagingStrokes = [];
 
-      // Click on any stroke in pan mode opens the comment box; ignore if the user just finished dragging
-      var dragMoved = false;
-      annGroup.on('dragmove', function () { dragMoved = true; });
-      annGroup.on('dragstart', function () { dragMoved = false; });
-      annGroup.on('click tap', function () {
-        if (dragMoved) { dragMoved = false; return; }
-        if (currentTool !== 'pan') return;
-        var a = annotations.filter(function (x) { return x.konvaGroup === annGroup; })[0];
-        if (a) openAnnotationComment(a);
-      });
+      var ann = { name: annName, color: color, konvaLayer: annLayer, konvaGroup: annGroup, visible: true, text: text || '' };
+      attachGroupHandlers(ann);
 
       annLayer.batchDraw();
       stagingLayer.batchDraw();
 
-      annotations.push({ name: annName, color: color, konvaLayer: annLayer, konvaGroup: annGroup, visible: true, text: text || '' });
+      annotations.push(ann);
       // Add committed color to recents
       var hexLow = color.toLowerCase();
       var idx = recentColors.indexOf(hexLow);
@@ -1379,6 +1389,21 @@
       hideCommentBox();
       renderLayersPanel();
       setTool('pan'); // committing a comment returns to the hand tool
+      recordHistory();
+    }
+
+    // Attach click/drag behaviour to an annotation's group (shared by commit + history restore)
+    function attachGroupHandlers(ann) {
+      var annGroup = ann.konvaGroup;
+      var dragMoved = false;
+      annGroup.on('dragstart', function () { dragMoved = false; });
+      annGroup.on('dragmove', function () { dragMoved = true; });
+      annGroup.on('dragend', function () { recordHistory(); });
+      annGroup.on('click tap', function () {
+        if (dragMoved) { dragMoved = false; return; }
+        if (currentTool !== 'pan') return;
+        openAnnotationComment(ann);
+      });
     }
 
     // ---- Layers panel ----
@@ -1423,6 +1448,7 @@
             ann.konvaLayer.visible(ann.visible);
             stage.batchDraw();
             renderLayersPanel();
+            recordHistory();
           });
 
           var dot = document.createElement('span');
@@ -1445,6 +1471,7 @@
             ann.konvaLayer.destroy();
             annotations.splice(annotations.indexOf(ann), 1);
             renderLayersPanel();
+            recordHistory();
           });
 
           row.appendChild(eye);
@@ -1492,6 +1519,7 @@
       isDrawing = false;
       currentLine = null;
       if (stagingStrokes.length > 0) showCommitBar();
+      recordHistory();
     });
 
     // ---- Toolbar buttons ----
@@ -1507,9 +1535,12 @@
 
     document.getElementById('commentConfirm').addEventListener('click', function () {
       if (editingAnnotation) {
-        editingAnnotation.text = commentInput.value.trim();
+        var newText = commentInput.value.trim();
+        var changed = editingAnnotation.text !== newText;
+        editingAnnotation.text = newText;
         hideCommentBox();
         renderLayersPanel();
+        if (changed) recordHistory();
       } else {
         commitAnnotation(commentInput.value);
       }
@@ -1525,19 +1556,136 @@
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         if (editingAnnotation) {
-          editingAnnotation.text = this.value.trim();
+          var newText = this.value.trim();
+          var changed = editingAnnotation.text !== newText;
+          editingAnnotation.text = newText;
           hideCommentBox();
           renderLayersPanel();
+          if (changed) recordHistory();
         } else {
           commitAnnotation(this.value);
         }
       }
     });
 
+    // ---- Undo / redo (snapshot-based, unlimited depth) ----
+    var history = [];
+    var histIndex = -1;
+    var undoBtn = document.getElementById('undoBtn');
+    var redoBtn = document.getElementById('redoBtn');
+
+    function strokeData(line) {
+      return { points: line.points().slice(), stroke: line.stroke(), strokeWidth: line.strokeWidth() };
+    }
+
+    function snapshotState() {
+      return {
+        annotationCount: annotationCount,
+        staging: stagingStrokes.map(strokeData),
+        annotations: annotations.map(function (a) {
+          var strokes = [];
+          a.konvaGroup.find('Line').forEach(function (l) { strokes.push(strokeData(l)); });
+          return {
+            name: a.name, color: a.color, visible: a.visible, text: a.text,
+            x: a.konvaGroup.x(), y: a.konvaGroup.y(), strokes: strokes
+          };
+        })
+      };
+    }
+
+    function makeLine(sd, listening) {
+      return new Konva.Line({
+        points: sd.points.slice(), stroke: sd.stroke, strokeWidth: sd.strokeWidth,
+        tension: 0.5, lineCap: 'round', lineJoin: 'round', listening: listening
+      });
+    }
+
+    function restoreSnapshot(snap) {
+      // Tear down current live state
+      annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+      annotations = [];
+      stagingLayer.destroyChildren();
+      stagingStrokes = [];
+      editingAnnotation = null;
+
+      // Rebuild committed annotations (oldest first so z-order matches)
+      snap.annotations.forEach(function (ad) {
+        var annLayer = new Konva.Layer();
+        stage.add(annLayer);
+        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: currentTool === 'pan' });
+        annLayer.add(annGroup);
+        ad.strokes.forEach(function (sd) { annGroup.add(makeLine(sd, true)); });
+        var ann = { name: ad.name, color: ad.color, konvaLayer: annLayer, konvaGroup: annGroup, visible: ad.visible, text: ad.text };
+        attachGroupHandlers(ann);
+        annLayer.visible(ad.visible);
+        annLayer.batchDraw();
+        annotations.push(ann);
+      });
+
+      // Rebuild staging strokes
+      snap.staging.forEach(function (sd) {
+        var line = makeLine(sd, false);
+        stagingLayer.add(line);
+        stagingStrokes.push(line);
+      });
+      stagingLayer.moveToTop();
+      stagingLayer.batchDraw();
+
+      annotationCount = snap.annotationCount;
+      if (stagingStrokes.length > 0) showCommitBar(); else hideCommitBar();
+      hideCommentBox();
+      renderLayersPanel();
+    }
+
+    function updateUndoRedoButtons() {
+      if (undoBtn) undoBtn.disabled = histIndex <= 0;
+      if (redoBtn) redoBtn.disabled = histIndex >= history.length - 1;
+    }
+
+    function recordHistory() {
+      // Drop any redo tail, then append the new state
+      if (histIndex < history.length - 1) history = history.slice(0, histIndex + 1);
+      history.push(snapshotState());
+      histIndex = history.length - 1;
+      updateUndoRedoButtons();
+    }
+
+    function resetHistory() {
+      history = [];
+      histIndex = -1;
+      recordHistory(); // baseline snapshot of the current (empty) state
+    }
+
+    function undo() {
+      if (histIndex <= 0) return;
+      histIndex--;
+      restoreSnapshot(history[histIndex]);
+      updateUndoRedoButtons();
+    }
+
+    function redo() {
+      if (histIndex >= history.length - 1) return;
+      histIndex++;
+      restoreSnapshot(history[histIndex]);
+      updateUndoRedoButtons();
+    }
+
+    undoBtn.addEventListener('click', undo);
+    redoBtn.addEventListener('click', redo);
+
     // ---- Spacebar = hold-to-pan (temporary hand tool, like Photoshop/Figma) ----
     function isTypingTarget(el) {
       return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable);
     }
+
+    // Keyboard: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo
+    window.addEventListener('keydown', function (e) {
+      if (!imageNode || isTypingTarget(document.activeElement)) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      var k = e.key.toLowerCase();
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+    });
     window.addEventListener('keydown', function (e) {
       if (e.code !== 'Space' || e.repeat) return;
       if (!imageNode || spacePanning || isTypingTarget(document.activeElement)) return;
