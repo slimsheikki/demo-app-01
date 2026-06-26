@@ -207,6 +207,112 @@
   }
   input[type="file"] { display: none; }
 
+  /* ---- Before/after comparison ---- */
+  #compareDivider {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 0;               /* zero-width strip; children center on `left` */
+    height: 100%;
+    display: none;
+    z-index: 19;            /* above canvas, below toolbar/panels (z 20+) */
+    touch-action: none;
+  }
+  #compareDivider.show { display: block; }
+  #compareLine {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    height: 100%;
+    width: 2px;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.85);
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.25), 0 0 10px rgba(0,0,0,0.35);
+    pointer-events: none;
+  }
+  #compareHandle {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: ew-resize;
+  }
+  .cmp-grip {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--txt);
+    flex: none;
+  }
+  .cmp-grip svg { width: 22px; height: 22px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+  .cmp-label {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: rgba(255,255,255,0.9);
+    background: rgba(0,0,0,0.45);
+    padding: 3px 7px;
+    border-radius: 6px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    white-space: nowrap;
+    user-select: none;
+  }
+  #compareBar {
+    position: absolute;
+    left: 50%;
+    top: max(64px, calc(env(safe-area-inset-top, 16px) + 48px));
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 6px 6px 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 21;
+    user-select: none;
+  }
+  #compareBar.show { display: flex; }
+  #compareName {
+    font-size: 12px;
+    color: var(--txt);
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #compareExit {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--txt);
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .14s ease;
+  }
+  #compareExit:hover { background: rgba(255,107,107,0.16); color: var(--danger); }
+  #compareExit svg { width: 16px; height: 16px; stroke: currentColor; stroke-width: 2; fill: none; }
+
   /* ---- Draw-mode cursor ---- */
   #stage.draw-mode { cursor: crosshair !important; }
 
@@ -704,6 +810,9 @@
     <button class="cbtn" id="newBtn" title="Open another image" aria-label="Open another image">
       <svg viewBox="0 0 24 24"><path d="M4 16V6a2 2 0 0 1 2-2h8M9 8h11a0 0 0 0 1 0 0v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2" stroke-linecap="round" stroke-linejoin="round"/><path d="M16 4v4h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <button class="cbtn" id="compareBtn" title="Compare with new version (before/after)" aria-label="Compare with another image">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3.5v17" stroke-linecap="round"/><path d="M8.5 10l-2 2 2 2M15.5 10l2 2-2 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </div>
 
   <!-- Toolbar: pan / draw tool toggle -->
@@ -802,6 +911,25 @@
   <div id="err"></div>
 
   <input type="file" id="fileInput" accept="image/*">
+  <input type="file" id="compareInput" accept="image/*">
+
+  <!-- Before/after comparison overlay -->
+  <div id="compareDivider" aria-hidden="true">
+    <div id="compareLine"></div>
+    <div id="compareHandle">
+      <span class="cmp-label cmp-before">BEFORE</span>
+      <span class="cmp-grip">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8l-3 4 3 4M15 8l3 4-3 4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </span>
+      <span class="cmp-label cmp-after">AFTER</span>
+    </div>
+  </div>
+  <div id="compareBar">
+    <span id="compareName">Before / After</span>
+    <button id="compareExit" title="Exit compare" aria-label="Exit compare">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>
+    </button>
+  </div>
 
   <!-- Konva 9.3.16 (MIT) inlined so the tool has no external dependencies and works offline -->
   <script>!function(t,e){"object"==typeof exports&&"undefined"!=typeof module?module.exports=e():"function"==typeof define&&define.amd?define(e):(t="undefined"!=typeof globalThis?globalThis:t||self).Konva=e()}(this,(function(){"use strict";
@@ -976,7 +1104,8 @@
           return;
         }
 
-        // Clear any previous image
+        // Clear any previous image (and any active comparison)
+        if (compareMode) exitCompare();
         if (imageNode) { imageNode.destroy(); }
         imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
         layer.add(imageNode);
@@ -1019,6 +1148,11 @@
 
     window.addEventListener('resize', function () {
       resizeStage();
+      if (compareMode) {
+        dividerX = Math.max(0, Math.min(window.innerWidth, dividerX));
+        positionDivider();
+        layer.batchDraw();
+      }
     });
 
     // ---- Tool switching ----
@@ -1914,6 +2048,100 @@
     fileInput.addEventListener('change', function () {
       if (fileInput.files && fileInput.files.length) loadFile(fileInput.files[0]);
     });
+
+    // ---- Before/after comparison ----
+    var compareInput   = document.getElementById('compareInput');
+    var compareBtn     = document.getElementById('compareBtn');
+    var compareDivider = document.getElementById('compareDivider');
+    var compareHandle  = document.getElementById('compareHandle');
+    var compareBar     = document.getElementById('compareBar');
+    var compareName    = document.getElementById('compareName');
+    var compareExit    = document.getElementById('compareExit');
+    var compareMode    = false;
+    var compareGroup   = null;   // Konva.Group holding v2, clipped to one side of the divider
+    var compareImgNode = null;
+    var dividerX       = 0;      // divider position, in screen pixels
+
+    // Reveal the new version (v2) to the RIGHT of the divider; v1 shows through on the left.
+    // Runs on every redraw, so it tracks pan/zoom automatically.
+    function compareClip(ctx) {
+      var scale = stage.scaleX();
+      var clipX = (dividerX - stage.x()) / scale;   // divider, converted to image coords
+      clipX = Math.max(0, Math.min(imgW, clipX));
+      ctx.rect(clipX, 0, imgW - clipX, imgH);
+    }
+
+    function positionDivider() {
+      compareDivider.style.left = dividerX + 'px';
+    }
+
+    function enterCompare(img, name) {
+      if (!imageNode) return;
+      if (compareMode) exitCompare();
+      // Size v2 to v1's frame so the two versions overlay in perfect register
+      compareImgNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH, listening: false });
+      compareGroup = new Konva.Group({ clipFunc: compareClip });
+      compareGroup.add(compareImgNode);
+      layer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
+      compareGroup.moveToTop();
+      compareMode = true;
+      dividerX = window.innerWidth / 2;
+      positionDivider();
+      compareDivider.classList.add('show');
+      compareBar.classList.add('show');
+      compareName.textContent = name ? ('Before  ·  After — ' + name) : 'Before / After';
+      layer.batchDraw();
+    }
+
+    function exitCompare() {
+      if (!compareMode) return;
+      compareMode = false;
+      if (compareGroup) { compareGroup.destroy(); compareGroup = null; compareImgNode = null; }
+      compareDivider.classList.remove('show');
+      compareBar.classList.remove('show');
+      layer.batchDraw();
+    }
+
+    // Drag the divider handle
+    (function () {
+      var dragging = false;
+      compareHandle.addEventListener('pointerdown', function (e) {
+        dragging = true;
+        compareHandle.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      compareHandle.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        dividerX = Math.max(0, Math.min(window.innerWidth, e.clientX));
+        positionDivider();
+        layer.batchDraw();
+      });
+      compareHandle.addEventListener('pointerup', function () { dragging = false; });
+      compareHandle.addEventListener('pointercancel', function () { dragging = false; });
+    })();
+
+    compareBtn.addEventListener('click', function () {
+      if (!imageNode) return;
+      compareInput.value = '';
+      compareInput.click();
+    });
+    compareInput.addEventListener('change', function () {
+      if (!(compareInput.files && compareInput.files.length)) return;
+      var file = compareInput.files[0];
+      if (!file.type || file.type.indexOf('image/') !== 0) {
+        showError('That file isn’t an image we can open.');
+        return;
+      }
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { enterCompare(img, file.name || ''); };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        showError('Couldn’t open this comparison image. Try JPG, PNG or WebP.');
+      };
+      img.src = url;
+    });
+    compareExit.addEventListener('click', exitCompare);
 
     // ---- Control buttons ----
     document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
