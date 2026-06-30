@@ -178,60 +178,6 @@
   #controls.show { display: flex; }
 
   /* ---- Filmstrip (multi-image projects) ---- */
-  #filmstrip {
-    position: absolute;
-    left: 50%;
-    bottom: calc(84px + env(safe-area-inset-bottom));
-    transform: translateX(-50%);
-    display: none;
-    max-width: min(92vw, 760px);
-    padding: 8px;
-    background: var(--glass-bg);
-    border: 1px solid var(--glass-border);
-    border-radius: 14px;
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    box-shadow: 0 14px 36px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
-    z-index: 20;
-  }
-  #filmstrip.show { display: block; }
-  #filmstripList { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
-  .frame-thumb {
-    position: relative;
-    flex: 0 0 auto;
-    width: 72px; height: 54px;
-    border-radius: 9px;
-    overflow: hidden;
-    cursor: pointer;
-    border: 2px solid transparent;
-    background: rgba(255,255,255,0.05);
-    transition: border-color .14s ease;
-  }
-  .frame-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .frame-thumb:hover { border-color: rgba(255,255,255,0.25); }
-  .frame-thumb.active { border-color: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
-  .frame-del {
-    position: absolute; top: 2px; right: 2px;
-    width: 18px; height: 18px; padding: 0;
-    border: none; border-radius: 50%;
-    background: rgba(0,0,0,0.55); color: #fff;
-    display: none; align-items: center; justify-content: center;
-    cursor: pointer;
-  }
-  .frame-thumb:hover .frame-del { display: flex; }
-  .frame-del svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 2.4; fill: none; }
-  .frame-add {
-    flex: 0 0 auto;
-    width: 72px; height: 54px;
-    border-radius: 9px;
-    border: 1.5px dashed rgba(255,255,255,0.25);
-    background: transparent; color: rgba(255,255,255,0.6);
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .frame-add:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
-  .frame-add svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; }
-
   /* Viewer-only controls: hidden in the normal editor, shown on a shared link */
   #uploadV2Btn, #compareV2Btn { display: none; }
   body.read-only #uploadV2Btn { display: flex; }
@@ -868,9 +814,6 @@
   </div>
 
   <!-- Zoom / pan controls -->
-  <!-- Filmstrip: thumbnails for multi-image projects (shown when >1 frame) -->
-  <div id="filmstrip"><div id="filmstripList"></div></div>
-
   <div id="controls">
     <button class="cbtn" id="zoomOut" title="Zoom out" aria-label="Zoom out">
       <svg viewBox="0 0 24 24"><path d="M5 12h14" stroke-linecap="round"/></svg>
@@ -1039,6 +982,10 @@
     var MAX_SCALE = 8;
     var ZOOM_STEP = 1.2;       // per wheel notch / button press
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
+    var ARTBOARD_GAP          = 60;   // canvas-px gap between artboards in grid + snap
+    var ARTBOARD_LABEL_HEIGHT = 28;   // canvas-px label bar above each artboard
+    var SNAP_THRESHOLD        = 30;   // canvas-px: how close edge must be to trigger snap
+    var GRID_COLS             = 4;    // max artboards per row before wrapping
 
     // ---- Sharing backend (Supabase) ----
     // Fill these in from your Supabase project (Settings → API). The anon key is
@@ -1063,9 +1010,6 @@
     var errEl       = document.getElementById('err');
     var fileInput   = document.getElementById('fileInput');
     var zoomLabel   = document.getElementById('zoomLabel');
-    var filmstrip   = document.getElementById('filmstrip');
-    var filmstripList = document.getElementById('filmstripList');
-
     // ---- Guard: the viewer engine (Konva) loads from a CDN. If that fails
     // (no connection, CDN blocked), bail loudly instead of dying silently. ----
     if (typeof Konva === 'undefined') {
@@ -1090,8 +1034,8 @@
       height: window.innerHeight,
       draggable: true
     });
-    var layer = new Konva.Layer();
-    stage.add(layer);
+    var worldLayer = new Konva.Layer();
+    stage.add(worldLayer);
     var stagingLayer = new Konva.Layer();
     stage.add(stagingLayer);
 
@@ -1279,8 +1223,8 @@
     // bottom zoom bar are horizontally centered, so they only constrain the
     // image vertically — reserve their height so the image stays fully visible
     // between them instead of slipping underneath.
-    function fitToScreen() {
-      if (!imageNode) return;
+    function fitAll() {
+      if (!frames.length) return;
       var sw = stage.width(), sh = stage.height();
       var gap = 14;
       var topInset = 0, bottomInset = 0;
@@ -1290,20 +1234,31 @@
       if (controls.classList.contains('show')) {
         bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
       }
-      if (filmstrip.classList.contains('show')) {
-        bottomInset = Math.max(bottomInset, (window.innerHeight - filmstrip.getBoundingClientRect().top) + gap);
-      }
+
+      var hasChrome = frames.length > 1;
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      frames.forEach(function(f) {
+        var fx = f.x || 0, fy = f.y || 0;
+        minX = Math.min(minX, fx);
+        minY = Math.min(minY, fy - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0));
+        maxX = Math.max(maxX, fx + f.imgW);
+        maxY = Math.max(maxY, fy + f.imgH);
+      });
+      var worldW = maxX - minX, worldH = maxY - minY;
       var availH = Math.max(40, sh - topInset - bottomInset);
-      var scale = clamp(Math.min(sw / imgW, availH / imgH) * FIT_PADDING);
+      var scale = clamp(Math.min(sw / worldW, availH / worldH) * FIT_PADDING);
       stage.scale({ x: scale, y: scale });
       stage.position({
-        x: (sw - imgW * scale) / 2,
-        y: topInset + (availH - imgH * scale) / 2
+        x: (sw - worldW * scale) / 2 - minX * scale,
+        y: topInset + (availH - worldH * scale) / 2 - minY * scale
       });
       stage.batchDraw();
       updateZoomLabel();
       syncCompareUI();
     }
+
+    // Keep fitToScreen as an alias for backward compat
+    var fitToScreen = fitAll;
 
     // ---- Load an image file ----
     function loadFile(file) {
@@ -1330,7 +1285,7 @@
         if (compareMode) exitCompare();
         if (imageNode) { imageNode.destroy(); }
         imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
-        layer.add(imageNode);
+        worldLayer.add(imageNode);
 
         dropEl.classList.add('hide');
         controls.classList.add('show');
@@ -1431,20 +1386,43 @@
         var failed = 0;
         results.forEach(function (res) {
           if (!res.ok) { failed++; return; }
+          var pos = computeNewArtboardPosition(res.w, res.h);
+          var label = (res.file.name || ‘’).replace(/\.[^.]+$/, ‘’) || (‘Frame ‘ + (frames.length + 1));
           frames.push({
             id: makeFrameId(), image: res.img, blob: res.file,
             imgW: res.w, imgH: res.h,
             imagePath: null, imageV2Path: null, v2Image: null,
             snapshot: { annotationCount: 0, staging: [], annotations: [] },
             history: [], histIndex: -1,
-            thumb: makeThumb(res.img, res.w, res.h)
+            thumb: makeThumb(res.img, res.w, res.h),
+            x: pos.x, y: pos.y, label: label,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            liveAnnotations: []
           });
         });
-        if (failed) showError('Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.');
+        if (failed) showError(‘Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.’);
         if (frames.length === 0) return;
         if (wasEmpty) showChrome();
-        if (frames.length > firstNewIndex) switchFrame(firstNewIndex);
-        else renderFilmstrip();
+
+        // When going from 1 → 2 frames, retroactively mount artboard chrome on frame 0
+        if (frames.length === 2 && firstNewIndex === 1) {
+          mountArtboard(frames[0]);
+        }
+        // Mount all newly added frames that need artboard chrome (i.e. 2+ total)
+        if (frames.length > 1) {
+          for (var ni = firstNewIndex; ni < frames.length; ni++) {
+            mountArtboard(frames[ni]);
+          }
+        } else {
+          // Single image: add imageNode directly to worldLayer (no artboard chrome)
+          var f0 = frames[0];
+          if (!f0.imageNode) {
+            f0.imageNode = new Konva.Image({ image: f0.image, x: 0, y: 0, width: f0.imgW, height: f0.imgH });
+            worldLayer.add(f0.imageNode);
+          }
+        }
+
+        if (frames.length > firstNewIndex) setActiveFrame(firstNewIndex);
       });
     }
 
@@ -1467,13 +1445,23 @@
     }
 
     // Make frame i the live one: save the current frame, then rebuild from the target.
+    function hydrateAndMountFrame(frame) {
+      if (frame.image) {
+        if (!frame.artboardGroup && frames.length > 1) mountArtboard(frame);
+        return Promise.resolve();
+      }
+      return hydrateFrame(frame).then(function() {
+        if (!frame.artboardGroup && frames.length > 1) mountArtboard(frame);
+      });
+    }
+
+    // switchFrame kept as compatibility shim for the single-frame viewer bootstrap
     function switchFrame(i) {
-      if (i < 0 || i >= frames.length || i === activeFrameIndex) return Promise.resolve();
+      if (i < 0 || i >= frames.length) return Promise.resolve();
       var target = frames[i];
       var pre = (!target.image && target.imagePath) ? hydrateFrame(target) : Promise.resolve();
       return pre.then(function () {
         if (compareMode) exitCompare();
-        // Serialize the outgoing frame's live state back onto its record
         if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
           var cur = frames[activeFrameIndex];
           cur.snapshot = snapshotState();
@@ -1481,26 +1469,19 @@
           cur.histIndex = histIndex;
         }
         activeFrameIndex = i;
-
-        // Swap the image
         if (imageNode) { imageNode.destroy(); imageNode = null; }
         imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
         imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
-        layer.add(imageNode);
+        target.imageNode = imageNode;
+        worldLayer.add(imageNode);
         imageNode.moveToBottom();
-
-        // Swap the undo stack and rebuild annotations from the frame's snapshot
         history = target.history; histIndex = target.histIndex;
         restoreSnapshot(target.snapshot);
-        if (histIndex < 0) resetHistory();   // fresh frame → record a baseline
-
+        if (histIndex < 0) resetHistory();
         setTool(readOnly ? 'pan' : currentTool);
-        renderFilmstrip();        // show/refresh strip first so fit reserves its height
-        fitToScreen();
+        fitAll();
         renderLayersPanel();
         updateUndoRedoButtons();
-
-        // Per-frame before/after availability
         compareV2Image = target.v2Image || null;
         if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
         else document.body.classList.remove('has-v2');
@@ -1511,62 +1492,324 @@
     function removeFrame(i) {
       if (readOnly || i < 0 || i >= frames.length) return;
       var removingActive = (i === activeFrameIndex);
+      var removedFrame = frames[i];
+
+      // Destroy artboard chrome
+      if (removedFrame.artboardGroup) {
+        stage.off('pointermove.abdrag' + removedFrame.id);
+        stage.off('pointerup.abdrag' + removedFrame.id);
+        removedFrame.artboardGroup.destroy();
+      } else if (removedFrame.imageNode) {
+        removedFrame.imageNode.destroy();
+      }
       frames.splice(i, 1);
 
       if (frames.length === 0) {
         activeFrameIndex = -1;
         if (compareMode) exitCompare();
-        if (imageNode) { imageNode.destroy(); imageNode = null; }
-        annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+        imageNode = null;
         annotations = [];
         stagingLayer.destroyChildren(); stagingStrokes = [];
-        layer.batchDraw(); stagingLayer.batchDraw();
+        worldLayer.batchDraw(); stagingLayer.batchDraw();
         dropEl.classList.remove('hide');
         controls.classList.remove('show');
         toolbar.classList.remove('show');
         document.getElementById('colorPicker').style.display = 'none';
         layersPanel.classList.remove('show');
-        renderFilmstrip();
         return;
       }
+
+      // If going from 2 → 1 frames, unmount artboard chrome from the surviving frame
+      if (frames.length === 1 && frames[0].artboardGroup) {
+        unmountArtboard(frames[0]);
+      }
+
       if (removingActive) {
-        activeFrameIndex = -1;   // live state belonged to the removed frame; load fresh
-        switchFrame(Math.min(i, frames.length - 1));
+        activeFrameIndex = -1;
+        var newIdx = Math.min(i, frames.length - 1);
+        if (frames.length > 1) {
+          setActiveFrame(newIdx);
+          fitAll();
+        } else {
+          switchFrame(newIdx);
+          fitAll();
+        }
       } else {
         if (i < activeFrameIndex) activeFrameIndex--;
-        renderFilmstrip();
+        worldLayer.batchDraw();
       }
     }
 
-    // Render the bottom thumbnail filmstrip (shown only when there's more than one frame).
-    function renderFilmstrip() {
-      if (frames.length <= 1) { filmstrip.classList.remove('show'); filmstripList.innerHTML = ''; return; }
-      filmstrip.classList.add('show');
-      filmstripList.innerHTML = '';
-      frames.forEach(function (f, idx) {
-        var item = document.createElement('div');
-        item.className = 'frame-thumb' + (idx === activeFrameIndex ? ' active' : '');
-        var src = f.thumb || (f.imagePath ? supaPublicUrl(f.imagePath) : null);
-        if (src) { var im = document.createElement('img'); im.src = src; im.alt = ''; item.appendChild(im); }
-        item.addEventListener('click', function () { switchFrame(idx); });
-        if (!readOnly) {
-          var del = document.createElement('button');
-          del.className = 'frame-del';
-          del.setAttribute('aria-label', 'Remove frame');
-          del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
-          del.addEventListener('click', function (e) { e.stopPropagation(); removeFrame(idx); });
-          item.appendChild(del);
-        }
-        filmstripList.appendChild(item);
-      });
-      if (!readOnly) {
-        var add = document.createElement('button');
-        add.className = 'frame-add';
-        add.setAttribute('aria-label', 'Add images');
-        add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>';
-        add.addEventListener('click', function () { openPicker(); });
-        filmstripList.appendChild(add);
+    // ---- Artboard system ----
+
+    function computeNewArtboardPosition(newImgW, newImgH) {
+      if (frames.length === 0) return { x: 0, y: 0 };
+      var col = frames.length % GRID_COLS;
+      var lastFrame = frames[frames.length - 1];
+      if (col !== 0) {
+        return { x: lastFrame.x + lastFrame.imgW + ARTBOARD_GAP, y: lastFrame.y };
       }
+      var rowStart = frames.length - GRID_COLS;
+      var maxBottom = 0;
+      for (var i = Math.max(0, rowStart); i < frames.length; i++) {
+        maxBottom = Math.max(maxBottom, frames[i].y + frames[i].imgH + ARTBOARD_LABEL_HEIGHT);
+      }
+      return { x: 0, y: maxBottom + ARTBOARD_GAP };
+    }
+
+    function mountArtboard(frame) {
+      if (frame.artboardGroup) return;
+      var ag = new Konva.Group({ x: frame.x || 0, y: frame.y || 0 });
+      frame.artboardGroup = ag;
+
+      var lRect = new Konva.Rect({
+        x: 0, y: -ARTBOARD_LABEL_HEIGHT,
+        width: frame.imgW, height: ARTBOARD_LABEL_HEIGHT,
+        fill: 'rgba(255,255,255,0.07)', cornerRadius: [4, 4, 0, 0]
+      });
+      frame.labelRect = lRect;
+      ag.add(lRect);
+
+      var lText = new Konva.Text({
+        x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
+        text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
+        fontSize: 12, fill: 'rgba(255,255,255,0.6)', listening: false
+      });
+      frame.labelText = lText;
+      ag.add(lText);
+
+      // Use existing imageNode if already created, otherwise create it
+      if (frame.imageNode) {
+        frame.imageNode.remove();
+        frame.imageNode.x(0); frame.imageNode.y(0);
+        ag.add(frame.imageNode);
+      } else {
+        var imgNode = new Konva.Image({ image: frame.image, x: 0, y: 0, width: frame.imgW, height: frame.imgH });
+        frame.imageNode = imgNode;
+        ag.add(imgNode);
+      }
+
+      var outline = new Konva.Rect({
+        x: 0, y: 0, width: frame.imgW, height: frame.imgH,
+        stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1, listening: false
+      });
+      ag.add(outline);
+
+      rebuildAnnotationsInArtboard(frame);
+
+      var fi = frames.indexOf(frame);
+      frame.imageNode.on('click tap', function() { setActiveFrame(frames.indexOf(frame)); });
+      lRect.on('click tap', function() { setActiveFrame(frames.indexOf(frame)); });
+
+      worldLayer.add(ag);
+      worldLayer.batchDraw();
+
+      attachArtboardDragHandle(frame);
+    }
+
+    function unmountArtboard(frame) {
+      if (!frame.artboardGroup) return;
+      // Move imageNode back to worldLayer before destroying the group
+      if (frame.imageNode) {
+        frame.imageNode.off('click tap');
+        frame.imageNode.remove();
+        frame.imageNode.x(0); frame.imageNode.y(0);
+        worldLayer.add(frame.imageNode);
+        frame.imageNode.moveToBottom();
+      }
+      // Detach artboard drag events
+      stage.off('pointermove.abdrag' + frame.id);
+      stage.off('pointerup.abdrag' + frame.id);
+      frame.artboardGroup.destroy();
+      frame.artboardGroup = null;
+      frame.labelRect = null;
+      frame.labelText = null;
+      // Rebuild annotations directly in worldLayer
+      frame.liveAnnotations = [];
+      var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
+      snap.annotations.forEach(function(ad) {
+        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
+        worldLayer.add(annGroup);
+        ad.strokes.forEach(function(sd) { annGroup.add(makeLine(sd, true)); });
+        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
+        annGroup.visible(ann.visible);
+        attachGroupHandlers(ann);
+        frame.liveAnnotations.push(ann);
+      });
+      worldLayer.batchDraw();
+    }
+
+    function rebuildAnnotationsInArtboard(frame) {
+      // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount)
+      if (frame.artboardGroup) {
+        frame.artboardGroup.getChildren().forEach(function(child) {
+          if (child instanceof Konva.Group) child.destroy();
+        });
+      }
+      var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
+      var annList = [];
+      snap.annotations.forEach(function(ad) {
+        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
+        if (frame.artboardGroup) frame.artboardGroup.add(annGroup);
+        else worldLayer.add(annGroup);
+        ad.strokes.forEach(function(sd) { annGroup.add(makeLine(sd, true)); });
+        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
+        annGroup.visible(ann.visible);
+        attachGroupHandlers(ann);
+        annList.push(ann);
+      });
+      frame.liveAnnotations = annList;
+      if (frames.indexOf(frame) === activeFrameIndex) {
+        annotations = annList;
+        annotationCount = snap.annotationCount || 0;
+      }
+    }
+
+    function attachArtboardDragHandle(frame) {
+      if (!frame.labelRect) return;
+      var lRect = frame.labelRect;
+      var dragging = false, startCX, startCY, startFX, startFY;
+
+      lRect.on('pointerdown', function(e) {
+        if (readOnly) return;
+        setActiveFrame(frames.indexOf(frame));
+        dragging = true;
+        var cp = getCanvasPointer();
+        startCX = cp.x; startCY = cp.y;
+        startFX = frame.x || 0; startFY = frame.y || 0;
+        stage.draggable(false);
+        e.cancelBubble = true;
+      });
+
+      stage.on('pointermove.abdrag' + frame.id, function() {
+        if (!dragging) return;
+        var cp = getCanvasPointer();
+        frame.x = startFX + (cp.x - startCX);
+        frame.y = startFY + (cp.y - startCY);
+        frame.artboardGroup.position({ x: frame.x, y: frame.y });
+        worldLayer.batchDraw();
+      });
+
+      stage.on('pointerup.abdrag' + frame.id, function() {
+        if (!dragging) return;
+        dragging = false;
+        if (currentTool === 'pan') stage.draggable(true);
+        snapArtboard(frame);
+        if (frames.indexOf(frame) === activeFrameIndex) {
+          stagingLayer.position({ x: frame.x || 0, y: frame.y || 0 });
+        }
+        worldLayer.batchDraw();
+      });
+    }
+
+    function snapArtboard(movedFrame) {
+      if (!movedFrame.artboardGroup) return;
+      var mx1 = movedFrame.x, my1 = movedFrame.y;
+      var mx2 = mx1 + movedFrame.imgW, my2 = my1 + movedFrame.imgH;
+      var bestDist = SNAP_THRESHOLD;
+      var snapX = null, snapY = null;
+
+      frames.forEach(function(other) {
+        if (other === movedFrame || !other.artboardGroup) return;
+        var ox1 = other.x, oy1 = other.y;
+        var ox2 = ox1 + other.imgW, oy2 = oy1 + other.imgH;
+        var d;
+        d = Math.abs(mx2 + ARTBOARD_GAP - ox1);
+        if (d < bestDist) { bestDist = d; snapX = ox1 - movedFrame.imgW - ARTBOARD_GAP; snapY = null; }
+        d = Math.abs(mx1 - ox2 - ARTBOARD_GAP);
+        if (d < bestDist) { bestDist = d; snapX = ox2 + ARTBOARD_GAP; snapY = null; }
+        d = Math.abs(my2 + ARTBOARD_GAP - oy1);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy1 - movedFrame.imgH - ARTBOARD_LABEL_HEIGHT - ARTBOARD_GAP; }
+        d = Math.abs(my1 - oy2 - ARTBOARD_GAP);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy2 + ARTBOARD_GAP; }
+      });
+
+      if (snapX !== null) movedFrame.x = snapX;
+      if (snapY !== null) movedFrame.y = snapY;
+      if (snapX !== null || snapY !== null) {
+        movedFrame.artboardGroup.position({ x: movedFrame.x, y: movedFrame.y });
+      }
+    }
+
+    // setActiveFrame: switch active artboard without any Konva teardown
+    function setActiveFrame(i) {
+      if (i < 0 || i >= frames.length) return;
+
+      // Save outgoing frame's live state
+      if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
+        var cur = frames[activeFrameIndex];
+        cur.snapshot = snapshotState();
+        cur.history = history;
+        cur.histIndex = histIndex;
+        cur.liveAnnotations = annotations;
+        // Remove active highlight
+        if (cur.labelRect) cur.labelRect.stroke('');
+      }
+
+      activeFrameIndex = i;
+      var target = frames[i];
+
+      // Sync live globals
+      imgW = target.imgW; imgH = target.imgH;
+      sourceBlob = target.blob;
+      annotations = target.liveAnnotations || [];
+      annotationCount = target.snapshot ? (target.snapshot.annotationCount || 0) : 0;
+      history = target.history || [];
+      histIndex = target.histIndex != null ? target.histIndex : -1;
+      compareV2Image = target.v2Image || null;
+      imageNode = target.imageNode;
+
+      // Highlight active artboard label
+      if (target.labelRect) target.labelRect.stroke('rgba(255,255,255,0.45)');
+
+      // Offset stagingLayer to active artboard origin
+      stagingLayer.position({ x: target.x || 0, y: target.y || 0 });
+
+      if (histIndex < 0) resetHistory();
+
+      setTool(readOnly ? 'pan' : currentTool);
+
+      // fitAll only on first activation (wasEmpty transition)
+      requestAnimationFrame(function() {
+        renderLayersPanel();
+        updateUndoRedoButtons();
+        worldLayer.batchDraw();
+      });
+
+      compareV2Image = target.v2Image || null;
+      if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
+      else document.body.classList.remove('has-v2');
+    }
+
+    function getActiveArtboardPointer() {
+      var pos = getCanvasPointer();
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      return { x: pos.x - (f ? (f.x || 0) : 0), y: pos.y - (f ? (f.y || 0) : 0) };
+    }
+
+    function getAnnotationContainer() {
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (f && f.artboardGroup) return f.artboardGroup;
+      return worldLayer;
+    }
+
+    function autoPlaceFrames() {
+      var cursorX = 0, cursorY = 0, rowMaxH = 0;
+      frames.forEach(function(f, idx) {
+        if (f.x !== null && f.x !== undefined && f.y !== null && f.y !== undefined) {
+          rowMaxH = Math.max(rowMaxH, f.imgH || 0);
+          return;
+        }
+        var col = idx % GRID_COLS;
+        if (col === 0 && idx > 0) {
+          cursorY += rowMaxH + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP;
+          cursorX = 0; rowMaxH = 0;
+        } else if (idx > 0) {
+          cursorX = (frames[idx - 1].x || 0) + (frames[idx - 1].imgW || 0) + ARTBOARD_GAP;
+        }
+        f.x = cursorX; f.y = cursorY;
+        rowMaxH = Math.max(rowMaxH, f.imgH || 0);
+      });
     }
 
     // ---- Stage sizing ----
@@ -1835,13 +2078,15 @@
     function showCommentBox() {
       var bbox = getStagingBBox();
       var sc = stage.scaleX();
-      var screenCX = bbox.cx * sc + stage.x();
-      var screenMaxY = bbox.maxY * sc + stage.y();
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = af ? (af.x || 0) : 0, fOffY = af ? (af.y || 0) : 0;
+      var screenCX = (bbox.cx + fOffX) * sc + stage.x();
+      var screenMaxY = (bbox.maxY + fOffY) * sc + stage.y();
       var cbW = Math.min(340, window.innerWidth - 40);
       var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
       var top = screenMaxY + 16;
       if (top + 160 > window.innerHeight - 20) {
-        top = (bbox.minY * sc + stage.y()) - 176;
+        top = ((bbox.minY + fOffY) * sc + stage.y()) - 176;
       }
       top = Math.max(16, top);
       commentBox.style.left = left + 'px';
@@ -1861,7 +2106,7 @@
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       var gx = ann.konvaGroup ? ann.konvaGroup.x() : 0;
       var gy = ann.konvaGroup ? ann.konvaGroup.y() : 0;
-      (ann.konvaGroup || ann.konvaLayer).find('Line').forEach(function (line) {
+      ann.konvaGroup.find('Line').forEach(function (line) {
         var pts = line.points();
         for (var i = 0; i < pts.length; i += 2) {
           minX = Math.min(minX, pts[i] + gx);
@@ -1879,13 +2124,15 @@
       editingAnnotation = ann;
       var bbox = getAnnotationBBox(ann);
       var sc = stage.scaleX();
-      var screenCX = bbox.cx * sc + stage.x();
-      var screenMaxY = bbox.maxY * sc + stage.y();
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = af ? (af.x || 0) : 0, fOffY = af ? (af.y || 0) : 0;
+      var screenCX = (bbox.cx + fOffX) * sc + stage.x();
+      var screenMaxY = (bbox.maxY + fOffY) * sc + stage.y();
       var cbW = Math.min(340, window.innerWidth - 40);
       var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
       var top = screenMaxY + 16;
       if (top + 160 > window.innerHeight - 20) {
-        top = (bbox.minY * sc + stage.y()) - 176;
+        top = ((bbox.minY + fOffY) * sc + stage.y()) - 176;
       }
       top = Math.max(16, top);
       commentBox.style.left = left + 'px';
@@ -1917,15 +2164,14 @@
       var annName = 'Comment ' + annotationCount;
       var color = DRAW_COLOR;
 
-      var annLayer = new Konva.Layer();
-      stage.add(annLayer);
+      var container = getAnnotationContainer();
       stagingLayer.moveToTop();
 
       // Group makes the annotation draggable as a unit
       var annGroup = new Konva.Group({ draggable: currentTool === 'pan' });
-      annLayer.add(annGroup);
+      container.add(annGroup);
 
-      // Move strokes from staging into the group
+      // Move strokes from staging into the group (coords already in artboard-local space)
       stagingStrokes.forEach(function (line) {
         line.remove();
         line.listening(true);
@@ -1933,13 +2179,16 @@
       });
       stagingStrokes = [];
 
-      var ann = { name: annName, color: color, konvaLayer: annLayer, konvaGroup: annGroup, visible: true, text: text || '' };
+      var ann = { name: annName, color: color, konvaGroup: annGroup, visible: true, text: text || '' };
       attachGroupHandlers(ann);
 
-      annLayer.batchDraw();
+      worldLayer.batchDraw();
       stagingLayer.batchDraw();
 
       annotations.push(ann);
+      // Sync to liveAnnotations on the active frame
+      var activeFrame = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (activeFrame) activeFrame.liveAnnotations = annotations;
       // Add committed color to recents
       var hexLow = color.toLowerCase();
       var idx = recentColors.indexOf(hexLow);
@@ -2017,7 +2266,7 @@
             : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.06 18.06 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke-linecap="round"/><path d="M1 1l22 22" stroke-linecap="round"/></svg>';
           eye.addEventListener('click', function () {
             ann.visible = !ann.visible;
-            ann.konvaLayer.visible(ann.visible);
+            ann.konvaGroup.visible(ann.visible);
             stage.batchDraw();
             renderLayersPanel();
             recordHistory();
@@ -2047,8 +2296,10 @@
             del.setAttribute('aria-label', 'Delete layer');
             del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
             del.addEventListener('click', function () {
-              ann.konvaLayer.destroy();
+              ann.konvaGroup.destroy();
               annotations.splice(annotations.indexOf(ann), 1);
+              var df = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+              if (df) df.liveAnnotations = annotations;
               renderLayersPanel();
               recordHistory();
             });
@@ -2066,7 +2317,7 @@
       if (e.evt.button != null && e.evt.button !== 0) return; // ignore middle/right mouse buttons
       if (e.evt.touches && e.evt.touches.length > 1) return;
       isDrawing = true;
-      var pos = getCanvasPointer();
+      var pos = getActiveArtboardPointer();
       currentLine = new Konva.Line({
         points: [pos.x, pos.y, pos.x, pos.y],
         stroke: DRAW_COLOR,
@@ -2083,7 +2334,7 @@
     stage.on('mousemove touchmove', function (e) {
       if (!isDrawing || currentTool !== 'draw') return;
       if (e.evt.touches && e.evt.touches.length > 1) { isDrawing = false; return; }
-      var pos = getCanvasPointer();
+      var pos = getActiveArtboardPointer();
       var pts = currentLine.points().slice();
       pts.push(pos.x, pos.y);
       currentLine.points(pts);
@@ -2178,24 +2429,23 @@
     }
 
     function restoreSnapshot(snap) {
-      // Tear down current live state
-      annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+      // Tear down current live annotation groups
+      annotations.forEach(function (a) { if (a.konvaGroup) a.konvaGroup.destroy(); });
       annotations = [];
       stagingLayer.destroyChildren();
       stagingStrokes = [];
       editingAnnotation = null;
 
+      var container = getAnnotationContainer();
+
       // Rebuild committed annotations (oldest first so z-order matches)
       snap.annotations.forEach(function (ad) {
-        var annLayer = new Konva.Layer();
-        stage.add(annLayer);
         var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
-        annLayer.add(annGroup);
+        container.add(annGroup);
         ad.strokes.forEach(function (sd) { annGroup.add(makeLine(sd, true)); });
-        var ann = { name: ad.name, color: ad.color, konvaLayer: annLayer, konvaGroup: annGroup, visible: ad.visible, text: ad.text };
+        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible, text: ad.text };
         attachGroupHandlers(ann);
-        annLayer.visible(ad.visible);
-        annLayer.batchDraw();
+        annGroup.visible(ad.visible);
         annotations.push(ann);
       });
 
@@ -2209,6 +2459,10 @@
       stagingLayer.batchDraw();
 
       annotationCount = snap.annotationCount;
+      // Sync liveAnnotations on the active frame
+      var aFrame = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (aFrame) aFrame.liveAnnotations = annotations;
+      worldLayer.batchDraw();
       if (stagingStrokes.length > 0) showCommitBar(); else hideCommitBar();
       hideCommentBox();
       renderLayersPanel();
@@ -2554,10 +2808,12 @@
       if (!compareMode) return;
       var scale = stage.scaleX();
       var vw = window.innerWidth, vh = window.innerHeight;
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = af ? (af.x || 0) : 0, fOffY = af ? (af.y || 0) : 0;
       var x = Math.max(0, Math.min(imgW, dividerImgX));
-      var screenX  = stage.x() + x * scale;
-      var imgTop   = stage.y();
-      var imgBot   = stage.y() + imgH * scale;
+      var screenX  = stage.x() + (fOffX + x) * scale;
+      var imgTop   = stage.y() + fOffY * scale;
+      var imgBot   = imgTop + imgH * scale;
 
       // Divider strip follows the image column
       compareDivider.style.left = screenX + 'px';
@@ -2572,15 +2828,12 @@
       compareHandle.style.top = ((lineTop + lineBot) / 2) + 'px';
 
       // Compare bar: centered under the image, clamped so it stays reachable
-      var imgCenterX = stage.x() + (imgW * scale) / 2;
+      var imgCenterX = stage.x() + (fOffX + imgW / 2) * scale;
       var halfBar = compareBar.offsetWidth / 2;
       var barLeft = Math.max(halfBar + 8, Math.min(vw - halfBar - 8, imgCenterX));
       var bottomBound = vh - compareBar.offsetHeight - 8;
       if (controls.classList.contains('show')) {
         bottomBound = Math.min(bottomBound, controls.getBoundingClientRect().top - compareBar.offsetHeight - 10);
-      }
-      if (filmstrip.classList.contains('show')) {
-        bottomBound = Math.min(bottomBound, filmstrip.getBoundingClientRect().top - compareBar.offsetHeight - 10);
       }
       var barTop = Math.max(8, Math.min(bottomBound, imgBot + 12));
       compareBar.style.left = barLeft + 'px';
@@ -2594,7 +2847,7 @@
       compareImgNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH, listening: false });
       compareGroup = new Konva.Group({ clipFunc: compareClip });
       compareGroup.add(compareImgNode);
-      layer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
+      worldLayer.add(compareGroup);
       compareGroup.moveToTop();
       compareMode = true;
       dividerImgX = imgW / 2;    // start at the image's horizontal middle
@@ -2602,7 +2855,7 @@
       compareBar.classList.add('show');
       compareName.textContent = name ? ('Before  ·  After — ' + name) : 'Before / After';
       syncCompareUI();
-      layer.batchDraw();
+      worldLayer.batchDraw();
     }
 
     function exitCompare() {
@@ -2611,7 +2864,7 @@
       if (compareGroup) { compareGroup.destroy(); compareGroup = null; compareImgNode = null; }
       compareDivider.classList.remove('show');
       compareBar.classList.remove('show');
-      layer.batchDraw();
+      worldLayer.batchDraw();
     }
 
     // Drag the divider handle — converts the pointer's screen X back into an image coordinate
@@ -2625,9 +2878,11 @@
       compareHandle.addEventListener('pointermove', function (e) {
         if (!dragging) return;
         var scale = stage.scaleX();
-        dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale));
+        var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+        var fOffX = af ? (af.x || 0) : 0;
+        dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale - fOffX));
         syncCompareUI();
-        layer.batchDraw();
+        worldLayer.batchDraw();
       });
       compareHandle.addEventListener('pointerup', function () { dragging = false; });
       compareHandle.addEventListener('pointercancel', function () { dragging = false; });
@@ -2689,7 +2944,7 @@
       uploadNext()
         .then(function () {
           var doc = frames.map(function (f) {
-            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot };
+            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot, x: f.x || 0, y: f.y || 0 };
           });
           return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
         })
@@ -2792,7 +3047,12 @@
             return {
               id: el.frameId, image: null, blob: null, imgW: 0, imgH: 0,
               imagePath: el.imagePath, imageV2Path: el.imageV2Path || null, v2Image: null,
-              snapshot: el.annotations, history: [], histIndex: -1, thumb: null
+              snapshot: el.annotations, history: [], histIndex: -1, thumb: null,
+              x: (typeof el.x === 'number') ? el.x : null,
+              y: (typeof el.y === 'number') ? el.y : null,
+              label: el.label || null,
+              artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+              liveAnnotations: []
             };
           });
         } else {
@@ -2801,13 +3061,35 @@
           frames = [{
             id: 'f0', image: null, blob: null, imgW: 0, imgH: 0,
             imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
-            snapshot: doc, history: [], histIndex: -1, thumb: null
+            snapshot: doc, history: [], histIndex: -1, thumb: null,
+            x: 0, y: 0, label: null,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            liveAnnotations: []
           }];
         }
         if (!frames.length) { showError('This shared project has no images.'); return; }
 
         showChrome();
-        return switchFrame(0);   // hydrates frame 0's image, restores annotations, renders filmstrip
+
+        if (frames.length === 1) {
+          // Single image: use legacy switchFrame path
+          return switchFrame(0);
+        }
+
+        // Multi-image artboard viewer: auto-place any frames missing positions, then hydrate all
+        autoPlaceFrames();
+        var seqIdx = 0;
+        function hydrateNext() {
+          if (seqIdx >= frames.length) {
+            setActiveFrame(0);
+            requestAnimationFrame(fitAll);
+            return;
+          }
+          hydrateAndMountFrame(frames[seqIdx]).then(function() {
+            seqIdx++; hydrateNext();
+          }).catch(function() { seqIdx++; hydrateNext(); });
+        }
+        hydrateNext();
       }).catch(function (err) {
         showError('Couldn’t open the shared link. ' + (err && err.message ? err.message : ''));
       });
