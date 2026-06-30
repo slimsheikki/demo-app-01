@@ -1488,43 +1488,59 @@
     }
 
     // Make frame i the live one: save the current frame, then rebuild from the target.
+    function setActiveFrame(i) {
+      if (i < 0 || i >= frames.length) return;
+      var target = frames[i];
+      // Save outgoing frame
+      if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
+        var cur = frames[activeFrameIndex];
+        cur.snapshot = snapshotState();
+        cur.history = history;
+        cur.histIndex = histIndex;
+      }
+      activeFrameIndex = i;
+
+      // Sync live globals from target frame
+      imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
+      annotations = target.liveAnnotations || [];
+      annotationCount = target.snapshot ? (target.snapshot.annotationCount || 0) : 0;
+      history = target.history; histIndex = target.histIndex;
+      if (histIndex < 0) resetHistory();
+
+      // Update imageNode global reference
+      imageNode = target.imageNode;
+
+      // Update active artboard highlight
+      frames.forEach(function(f) {
+        if (f.labelRect) f.labelRect.stroke(null);
+      });
+      if (target.labelRect) target.labelRect.stroke('rgba(255,255,255,0.45)');
+      if (worldLayer) worldLayer.batchDraw();
+
+      // Set stagingLayer offset to active artboard position
+      var fx = (target.artboardGroup ? target.x : 0) || 0;
+      var fy = (target.artboardGroup ? target.y : 0) || 0;
+      stagingLayer.position({ x: fx, y: fy });
+
+      // Per-frame before/after
+      compareV2Image = target.v2Image || null;
+      if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
+      else document.body.classList.remove('has-v2');
+
+      renderLayersPanel();
+      updateUndoRedoButtons();
+      setTool(readOnly ? 'pan' : currentTool);
+    }
+
+    // Legacy alias — callers in the viewer path still use switchFrame
     function switchFrame(i) {
       if (i < 0 || i >= frames.length || i === activeFrameIndex) return Promise.resolve();
       var target = frames[i];
       var pre = (!target.image && target.imagePath) ? hydrateFrame(target) : Promise.resolve();
       return pre.then(function () {
         if (compareMode) exitCompare();
-        // Serialize the outgoing frame's live state back onto its record
-        if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
-          var cur = frames[activeFrameIndex];
-          cur.snapshot = snapshotState();
-          cur.history = history;
-          cur.histIndex = histIndex;
-        }
-        activeFrameIndex = i;
-
-        // Swap the image
-        if (imageNode) { imageNode.destroy(); imageNode = null; }
-        imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
-        imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
-        worldLayer.add(imageNode);
-        imageNode.moveToBottom();
-
-        // Swap the undo stack and rebuild annotations from the frame's snapshot
-        history = target.history; histIndex = target.histIndex;
-        restoreSnapshot(target.snapshot);
-        if (histIndex < 0) resetHistory();   // fresh frame → record a baseline
-
-        setTool(readOnly ? 'pan' : currentTool);
-        renderFilmstrip();        // show/refresh strip first so fit reserves its height
-        fitToScreen();
-        renderLayersPanel();
-        updateUndoRedoButtons();
-
-        // Per-frame before/after availability
-        compareV2Image = target.v2Image || null;
-        if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
-        else document.body.classList.remove('has-v2');
+        setActiveFrame(i);
+        fitAll();
       });
     }
 
