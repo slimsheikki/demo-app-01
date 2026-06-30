@@ -1515,12 +1515,23 @@
     function removeFrame(i) {
       if (readOnly || i < 0 || i >= frames.length) return;
       var removingActive = (i === activeFrameIndex);
+      var frame = frames[i];
+
+      // Destroy this frame's artboard group (includes imageNode and annotation groups inside it)
+      if (frame.artboardGroup) {
+        frame.artboardGroup.destroy();
+        frame.artboardGroup = null;
+      } else if (frame.imageNode) {
+        frame.imageNode.destroy();
+        frame.imageNode = null;
+      }
+
       frames.splice(i, 1);
 
       if (frames.length === 0) {
         activeFrameIndex = -1;
         if (compareMode) exitCompare();
-        if (imageNode) { imageNode.destroy(); imageNode = null; }
+        imageNode = null;
         annotations.forEach(function (a) { a.konvaGroup.destroy(); });
         annotations = [];
         stagingLayer.destroyChildren(); stagingStrokes = [];
@@ -1532,9 +1543,29 @@
         layersPanel.classList.remove('show');
         return;
       }
+
+      // Going from 2 to 1: unmount artboard chrome from the surviving frame
+      if (frames.length === 1 && frames[0].artboardGroup) {
+        unmountArtboard(frames[0]);
+        // Restore annotations for single-image mode
+        var snap = frames[0].snapshot || { annotationCount: 0, staging: [], annotations: [] };
+        frames[0].liveAnnotations = [];
+        snap.annotations.forEach(function(ad) {
+          var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
+          worldLayer.add(annGroup);
+          ad.strokes.forEach(function(sd) { annGroup.add(makeLine(sd, true)); });
+          var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
+          attachGroupHandlers(ann);
+          annGroup.visible(ann.visible);
+          frames[0].liveAnnotations.push(ann);
+        });
+        worldLayer.batchDraw();
+      }
+
       if (removingActive) {
-        activeFrameIndex = -1;   // live state belonged to the removed frame; load fresh
-        switchFrame(Math.min(i, frames.length - 1));
+        activeFrameIndex = -1;
+        setActiveFrame(Math.min(i, frames.length - 1));
+        fitAll();
       } else {
         if (i < activeFrameIndex) activeFrameIndex--;
       }
