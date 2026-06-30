@@ -1559,6 +1559,184 @@
       }
     }
 
+    function computeNewArtboardPosition(newImgW, newImgH) {
+      if (frames.length === 0) return { x: 0, y: 0 };
+      var col = (frames.length) % GRID_COLS;
+      var lastFrame = frames[frames.length - 1];
+      if (col !== 0) {
+        return { x: lastFrame.x + lastFrame.imgW + ARTBOARD_GAP, y: lastFrame.y };
+      } else {
+        var rowStart = frames.length - GRID_COLS;
+        var maxBottom = 0;
+        for (var i = Math.max(0, rowStart); i < frames.length; i++) {
+          maxBottom = Math.max(maxBottom, frames[i].y + frames[i].imgH + ARTBOARD_LABEL_HEIGHT);
+        }
+        return { x: 0, y: maxBottom + ARTBOARD_GAP };
+      }
+    }
+
+    function mountArtboard(frame) {
+      if (frame.artboardGroup) return;
+      var ag = new Konva.Group({ x: frame.x, y: frame.y });
+      frame.artboardGroup = ag;
+
+      var lRect = new Konva.Rect({
+        x: 0, y: -ARTBOARD_LABEL_HEIGHT,
+        width: frame.imgW, height: ARTBOARD_LABEL_HEIGHT,
+        fill: 'rgba(255,255,255,0.07)', cornerRadius: [4, 4, 0, 0]
+      });
+      frame.labelRect = lRect;
+      ag.add(lRect);
+
+      var lText = new Konva.Text({
+        x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
+        text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
+        fontSize: 12, fill: 'rgba(255,255,255,0.6)', listening: false
+      });
+      frame.labelText = lText;
+      ag.add(lText);
+
+      if (frame.imageNode) {
+        frame.imageNode.remove();
+        ag.add(frame.imageNode);
+      } else {
+        var imgNode = new Konva.Image({ image: frame.image, x: 0, y: 0, width: frame.imgW, height: frame.imgH });
+        frame.imageNode = imgNode;
+        ag.add(imgNode);
+      }
+
+      var outline = new Konva.Rect({
+        x: 0, y: 0, width: frame.imgW, height: frame.imgH,
+        stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1, listening: false
+      });
+      ag.add(outline);
+
+      rebuildAnnotationsInArtboard(frame);
+
+      frame.imageNode.on('click tap', function() { setActiveFrame(frames.indexOf(frame)); });
+      lRect.on('click tap', function() { setActiveFrame(frames.indexOf(frame)); });
+
+      worldLayer.add(ag);
+      worldLayer.batchDraw();
+
+      attachArtboardDragHandle(frame);
+    }
+
+    function rebuildAnnotationsInArtboard(frame) {
+      var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
+      var annList = [];
+      snap.annotations.forEach(function(ad) {
+        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
+        frame.artboardGroup.add(annGroup);
+        ad.strokes.forEach(function(sd) { annGroup.add(makeLine(sd, true)); });
+        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
+        annGroup.visible(ann.visible);
+        attachGroupHandlers(ann);
+        annList.push(ann);
+      });
+      frame.liveAnnotations = annList;
+      if (frames.indexOf(frame) === activeFrameIndex) {
+        annotations = annList;
+        annotationCount = snap.annotationCount || 0;
+      }
+    }
+
+    function attachArtboardDragHandle(frame) {
+      var lRect = frame.labelRect;
+      var dragging = false, startCX, startCY, startFX, startFY;
+
+      lRect.on('pointerdown', function(e) {
+        if (readOnly) return;
+        setActiveFrame(frames.indexOf(frame));
+        dragging = true;
+        var cp = getCanvasPointer();
+        startCX = cp.x; startCY = cp.y;
+        startFX = frame.x; startFY = frame.y;
+        stage.draggable(false);
+        e.cancelBubble = true;
+      });
+
+      stage.on('pointermove.abdrag' + frame.id, function() {
+        if (!dragging) return;
+        var cp = getCanvasPointer();
+        frame.x = startFX + (cp.x - startCX);
+        frame.y = startFY + (cp.y - startCY);
+        frame.artboardGroup.position({ x: frame.x, y: frame.y });
+        worldLayer.batchDraw();
+      });
+
+      stage.on('pointerup.abdrag' + frame.id, function() {
+        if (!dragging) return;
+        dragging = false;
+        stage.draggable(true);
+        snapArtboard(frame);
+        if (frames.indexOf(frame) === activeFrameIndex) {
+          stagingLayer.position({ x: frame.x, y: frame.y });
+        }
+        worldLayer.batchDraw();
+      });
+    }
+
+    function snapArtboard(movedFrame) {
+      var mx1 = movedFrame.x, my1 = movedFrame.y;
+      var mx2 = mx1 + movedFrame.imgW, my2 = my1 + movedFrame.imgH;
+      var bestDist = SNAP_THRESHOLD;
+      var snapX = null, snapY = null;
+
+      frames.forEach(function(other) {
+        if (other === movedFrame || !other.artboardGroup) return;
+        var ox1 = other.x, oy1 = other.y;
+        var ox2 = ox1 + other.imgW, oy2 = oy1 + other.imgH;
+
+        var d;
+        d = Math.abs(mx2 + ARTBOARD_GAP - ox1);
+        if (d < bestDist) { bestDist = d; snapX = ox1 - movedFrame.imgW - ARTBOARD_GAP; snapY = null; }
+        d = Math.abs(mx1 - ox2 - ARTBOARD_GAP);
+        if (d < bestDist) { bestDist = d; snapX = ox2 + ARTBOARD_GAP; snapY = null; }
+        d = Math.abs(my2 + ARTBOARD_GAP - oy1);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy1 - movedFrame.imgH - ARTBOARD_LABEL_HEIGHT - ARTBOARD_GAP; }
+        d = Math.abs(my1 - oy2 - ARTBOARD_GAP);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy2 + ARTBOARD_GAP; }
+      });
+
+      if (snapX !== null) { movedFrame.x = snapX; }
+      if (snapY !== null) { movedFrame.y = snapY; }
+      if (snapX !== null || snapY !== null) {
+        movedFrame.artboardGroup.position({ x: movedFrame.x, y: movedFrame.y });
+      }
+    }
+
+    function unmountArtboard(frame) {
+      if (!frame.artboardGroup) return;
+      if (frame.imageNode) {
+        frame.imageNode.remove();
+        worldLayer.add(frame.imageNode);
+      }
+      frame.artboardGroup.destroy();
+      frame.artboardGroup = null;
+      frame.labelRect = null;
+      frame.labelText = null;
+      worldLayer.batchDraw();
+    }
+
+    function autoPlaceFrames() {
+      var cursor = { x: 0, y: 0, rowMaxH: 0 };
+      frames.forEach(function(f, idx) {
+        if (f.x !== null && f.x !== undefined && f.y !== null && f.y !== undefined) return;
+        var col = idx % GRID_COLS;
+        if (col === 0 && idx > 0) {
+          cursor.y += cursor.rowMaxH + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP;
+          cursor.x = 0;
+          cursor.rowMaxH = 0;
+        } else if (idx > 0) {
+          cursor.x = frames[idx-1].x + (frames[idx-1].imgW || 0) + ARTBOARD_GAP;
+        }
+        f.x = cursor.x;
+        f.y = cursor.y;
+        cursor.rowMaxH = Math.max(cursor.rowMaxH, f.imgH || 0);
+      });
+    }
+
     // Render the bottom thumbnail filmstrip (shown only when there's more than one frame).
     function renderFilmstrip() {
       if (frames.length <= 1) { filmstrip.classList.remove('show'); filmstripList.innerHTML = ''; return; }
