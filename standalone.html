@@ -1439,6 +1439,21 @@
         });
     }
 
+    function hydrateAndMountFrame(frame) {
+      return hydrateFrame(frame).then(function() {
+        if (frames.length > 1) {
+          mountArtboard(frame);
+        } else {
+          // Single-image mode: imageNode directly in worldLayer
+          if (!frame.imageNode) {
+            var imgNode = new Konva.Image({ image: frame.image, x: 0, y: 0, width: frame.imgW, height: frame.imgH });
+            frame.imageNode = imgNode;
+            worldLayer.add(imgNode);
+          }
+        }
+      });
+    }
+
     // Make frame i the live one: save the current frame, then rebuild from the target.
     function setActiveFrame(i) {
       if (i < 0 || i >= frames.length) return;
@@ -2847,7 +2862,7 @@
       uploadNext()
         .then(function () {
           var doc = frames.map(function (f) {
-            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot };
+            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot, x: f.x || 0, y: f.y || 0 };
           });
           return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
         })
@@ -2950,7 +2965,11 @@
             return {
               id: el.frameId, image: null, blob: null, imgW: 0, imgH: 0,
               imagePath: el.imagePath, imageV2Path: el.imageV2Path || null, v2Image: null,
-              snapshot: el.annotations, history: [], histIndex: -1, thumb: null
+              snapshot: el.annotations, history: [], histIndex: -1, thumb: null,
+              x: (el.x !== undefined && el.x !== null) ? el.x : null,
+              y: (el.y !== undefined && el.y !== null) ? el.y : null,
+              label: el.frameId || '', artboardGroup: null, imageNode: null,
+              labelText: null, labelRect: null, liveAnnotations: []
             };
           });
         } else {
@@ -2959,13 +2978,29 @@
           frames = [{
             id: 'f0', image: null, blob: null, imgW: 0, imgH: 0,
             imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
-            snapshot: doc, history: [], histIndex: -1, thumb: null
+            snapshot: doc, history: [], histIndex: -1, thumb: null,
+            x: 0, y: 0, label: '', artboardGroup: null, imageNode: null,
+            labelText: null, labelRect: null, liveAnnotations: []
           }];
         }
         if (!frames.length) { showError('This shared project has no images.'); return; }
 
         showChrome();
-        return switchFrame(0);   // hydrates frame 0's image, restores annotations, renders filmstrip
+        // Sequential hydrate-and-mount loop
+        autoPlaceFrames();
+        var seqIdx = 0;
+        function hydrateNext() {
+          if (seqIdx >= frames.length) {
+            setActiveFrame(0);
+            fitAll();
+            return;
+          }
+          hydrateAndMountFrame(frames[seqIdx]).then(function() {
+            seqIdx++;
+            hydrateNext();
+          }).catch(function() { seqIdx++; hydrateNext(); });
+        }
+        hydrateNext();
       }).catch(function (err) {
         showError('Couldn’t open the shared link. ' + (err && err.message ? err.message : ''));
       });
