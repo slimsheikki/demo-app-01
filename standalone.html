@@ -1039,6 +1039,10 @@
     var MAX_SCALE = 8;
     var ZOOM_STEP = 1.2;       // per wheel notch / button press
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
+    var ARTBOARD_GAP          = 60;   // canvas-px gap between artboards in grid + snap
+    var ARTBOARD_LABEL_HEIGHT = 28;   // canvas-px label bar above each artboard
+    var SNAP_THRESHOLD        = 30;   // canvas-px: how close edge must be to trigger snap
+    var GRID_COLS             = 4;    // max artboards per row before wrapping
 
     // ---- Sharing backend (Supabase) ----
     // Fill these in from your Supabase project (Settings → API). The anon key is
@@ -1431,20 +1435,37 @@
         var failed = 0;
         results.forEach(function (res) {
           if (!res.ok) { failed++; return; }
+          var pos = frames.length >= 1 ? computeNewArtboardPosition(res.w, res.h) : { x: 0, y: 0 };
           frames.push({
             id: makeFrameId(), image: res.img, blob: res.file,
             imgW: res.w, imgH: res.h,
             imagePath: null, imageV2Path: null, v2Image: null,
             snapshot: { annotationCount: 0, staging: [], annotations: [] },
             history: [], histIndex: -1,
-            thumb: makeThumb(res.img, res.w, res.h)
+            thumb: makeThumb(res.img, res.w, res.h),
+            x: pos.x, y: pos.y,
+            label: (res.file.name || ‘’).replace(/\.[^.]+$/, ‘’) || (‘Frame ‘ + (frames.length + 1)),
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null, liveAnnotations: []
           });
         });
-        if (failed) showError('Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.');
+        if (failed) showError(‘Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.’);
         if (frames.length === 0) return;
         if (wasEmpty) showChrome();
-        if (frames.length > firstNewIndex) switchFrame(firstNewIndex);
-        else renderFilmstrip();
+        var newly = frames.length - firstNewIndex;
+        if (newly > 0) {
+          if (frames.length === 2) {
+            // Retroactively mount frame 0 and the new frame
+            mountArtboard(frames[0]);
+            mountArtboard(frames[frames.length - 1]);
+          } else if (frames.length > 2) {
+            for (var ni = firstNewIndex; ni < frames.length; ni++) {
+              mountArtboard(frames[ni]);
+            }
+          }
+          setActiveFrame(firstNewIndex);
+        } else {
+          renderFilmstrip();
+        }
       });
     }
 
