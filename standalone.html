@@ -154,6 +154,7 @@
     text-align: center;
   }
   #err.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #err.ok { background: rgba(18, 34, 24, 0.88); border-color: rgba(74, 222, 128, 0.45); color: #d6ffe0; }
 
   /* ---- Floating controls (shown once an image is loaded) ---- */
   #controls {
@@ -175,6 +176,19 @@
     user-select: none;
   }
   #controls.show { display: flex; }
+
+  /* Viewer-only controls: hidden in the normal editor, shown on a shared link */
+  #uploadV2Btn, #compareV2Btn { display: none; }
+  body.read-only #uploadV2Btn { display: flex; }
+  body.read-only.has-v2 #compareV2Btn { display: flex; }
+  /* Read-only viewer: hide all authoring chrome */
+  body.read-only #toolbar,
+  body.read-only #colorPicker,
+  body.read-only #newBtn,
+  body.read-only #compareBtn,
+  body.read-only #shareBtn,
+  body.read-only #commitBar,
+  body.read-only #commentBox { display: none !important; }
 
   .cbtn {
     appearance: none;
@@ -817,6 +831,15 @@
     <button class="cbtn" id="compareBtn" title="Compare with new version (before/after)" aria-label="Compare with another image">
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3.5v17" stroke-linecap="round"/><path d="M8.5 10l-2 2 2 2M15.5 10l2 2-2 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <button class="cbtn" id="shareBtn" title="Share a link (read-only)" aria-label="Share a link">
+      <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 10.5l6.8-4M8.6 13.5l6.8 4" stroke-linecap="round"/></svg>
+    </button>
+    <button class="cbtn" id="uploadV2Btn" title="Upload your new version" aria-label="Upload your new version">
+      <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 20h14" stroke-linecap="round"/></svg>
+    </button>
+    <button class="cbtn" id="compareV2Btn" title="Compare before / after" aria-label="Compare before and after">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 3.5v17" stroke-linecap="round"/><path d="M8.5 10l-2 2 2 2M15.5 10l2 2-2 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
   </div>
 
   <!-- Toolbar: pan / draw tool toggle -->
@@ -916,6 +939,7 @@
 
   <input type="file" id="fileInput" accept="image/*">
   <input type="file" id="compareInput" accept="image/*">
+  <input type="file" id="v2Input" accept="image/*">
 
   <!-- Before/after comparison overlay -->
   <div id="compareDivider" aria-hidden="true">
@@ -957,6 +981,16 @@
     var MAX_SCALE = 8;
     var ZOOM_STEP = 1.2;       // per wheel notch / button press
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
+
+    // ---- Sharing backend (Supabase) ----
+    // Fill these in from your Supabase project (Settings → API). The anon key is
+    // meant to be public — Row Level Security + the unguessable link id are the
+    // real guard. Sharing is disabled until both are set.
+    var SUPA_URL    = '';            // e.g. 'https://abcd.supabase.co'
+    var SUPA_KEY    = '';            // anon / public key
+    var SUPA_BUCKET = 'shots';
+    var MAX_UPLOAD_BYTES = 15 * 1024 * 1024;  // friendly guard before upload
+    function shareEnabled() { return !!(SUPA_URL && SUPA_KEY); }
 
     // ---- Elements ----
     var dropEl      = document.getElementById('drop');
@@ -1022,13 +1056,107 @@
     var layersPanelPositioned = false;
     var layersAttachedToColorPicker = false;
 
+    // ---- Sharing state ----
+    var sourceBlob = null;       // the original image File/Blob, kept for upload
+    var readOnly = false;        // true when viewing a shared link (?s=<id>)
+    var shareId = null;          // the session id when viewing/owning a shared link
+    var pendingSnapshot = null;  // annotations to restore once the image is loaded
+    var compareV2Image = null;   // photographer's new version, loaded for before/after
+
     // ---- Error toast ----
     var errTimer = null;
-    function showError(msg) {
+    function showToast(msg, ok) {
       errEl.textContent = msg;
+      errEl.classList.toggle('ok', !!ok);
       errEl.classList.add('show');
       if (errTimer) clearTimeout(errTimer);
       errTimer = setTimeout(function () { errEl.classList.remove('show'); }, 4200);
+    }
+    function showError(msg) { showToast(msg, false); }
+
+    // ---- Supabase REST/Storage helpers (plain fetch, no SDK) ----
+    function supaHeaders(extra) {
+      var h = { 'apikey': SUPA_KEY, 'Authorization': 'Bearer ' + SUPA_KEY };
+      if (extra) for (var k in extra) h[k] = extra[k];
+      return h;
+    }
+    // Public URL for a stored object (bucket is public-read)
+    function supaPublicUrl(path) {
+      return SUPA_URL + '/storage/v1/object/public/' + SUPA_BUCKET + '/' + path;
+    }
+    // Upload a blob to the bucket at `path`. Resolves on success.
+    function supaUpload(path, blob) {
+      return fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
+        method: 'POST',
+        headers: supaHeaders({ 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true' }),
+        body: blob
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error('upload failed (' + r.status + '): ' + t); });
+        return path;
+      });
+    }
+    // Insert a row into `sessions`.
+    function supaInsertSession(row) {
+      return fetch(SUPA_URL + '/rest/v1/sessions', {
+        method: 'POST',
+        headers: supaHeaders({ 'Content-Type': 'application/json', 'Prefer': 'return=minimal' }),
+        body: JSON.stringify(row)
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error('save failed (' + r.status + '): ' + t); });
+        return row;
+      });
+    }
+    // Fetch a single session row by id.
+    function supaGetSession(id) {
+      return fetch(SUPA_URL + '/rest/v1/sessions?id=eq.' + encodeURIComponent(id) + '&select=*', {
+        headers: supaHeaders({ 'Accept': 'application/json' })
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error('load failed (' + r.status + '): ' + t); });
+        return r.json();
+      }).then(function (rows) { return (rows && rows[0]) || null; });
+    }
+    // Register a v2 image path on an existing session (column-scoped RPC).
+    function supaAddVersion(id, path) {
+      return fetch(SUPA_URL + '/rest/v1/rpc/add_version', {
+        method: 'POST',
+        headers: supaHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ sid: id, path: path })
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error('update failed (' + r.status + '): ' + t); });
+        return true;
+      });
+    }
+    // Unguessable, URL-safe session id.
+    function makeShareId() {
+      var bytes = new Uint8Array(16);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      var s = '';
+      for (var i = 0; i < bytes.length; i++) s += ('0' + bytes[i].toString(16)).slice(-2);
+      return s;
+    }
+    // File extension from a blob's MIME type (jpg/png/webp/gif/avif).
+    function extForBlob(blob) {
+      var t = (blob && blob.type) || '';
+      if (t.indexOf('jpeg') >= 0 || t.indexOf('jpg') >= 0) return 'jpg';
+      if (t.indexOf('png') >= 0) return 'png';
+      if (t.indexOf('webp') >= 0) return 'webp';
+      if (t.indexOf('gif') >= 0) return 'gif';
+      if (t.indexOf('avif') >= 0) return 'avif';
+      return 'img';
+    }
+    // Copy text to the clipboard; resolves true on success, false otherwise.
+    function copyToClipboard(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+      }
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve(ok);
+      } catch (e) { return Promise.resolve(false); }
     }
 
     // ---- Zoom helpers ----
@@ -1098,6 +1226,7 @@
         return;
       }
 
+      sourceBlob = file;   // keep the original bytes for sharing/upload
       var url = URL.createObjectURL(file);
       var img = new Image();
 
@@ -1128,6 +1257,13 @@
           fitToScreen();
           renderLayersPanel();
           resetHistory();
+          // When opening a shared link, rebuild its annotations on top of the loaded image
+          if (pendingSnapshot) {
+            restoreSnapshot(pendingSnapshot);
+            pendingSnapshot = null;
+            setTool('pan');
+            fitToScreen();
+          }
         });
       };
 
@@ -1160,6 +1296,7 @@
 
     // ---- Tool switching ----
     function setTool(tool) {
+      if (readOnly) tool = 'pan';   // viewers can only pan/zoom
       currentTool = tool;
       if (isDrawing) { isDrawing = false; currentLine = null; }
       if (tool === 'pan') {
@@ -1175,9 +1312,9 @@
         document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
       }
-      // Keep annotation groups draggable only in pan mode
+      // Keep annotation groups draggable only in pan mode (never for viewers)
       annotations.forEach(function (ann) {
-        if (ann.konvaGroup) ann.konvaGroup.draggable(tool === 'pan');
+        if (ann.konvaGroup) ann.konvaGroup.draggable(!readOnly && tool === 'pan');
       });
     }
 
@@ -1538,7 +1675,7 @@
       annGroup.on('dragend', function () { recordHistory(); });
       annGroup.on('click tap', function () {
         if (dragMoved) { dragMoved = false; return; }
-        if (currentTool !== 'pan') return;
+        if (readOnly || currentTool !== 'pan') return;
         openAnnotationComment(ann);
       });
     }
@@ -1548,19 +1685,29 @@
       if (!imageNode) return;
       if (!layersPanelPositioned) {
         layersPanelPositioned = true;
-        layersAttachedToColorPicker = true;
-        var cpEl = document.getElementById('colorPicker');
-        // Defer getBoundingClientRect until layout is settled after renderRecents() may have changed picker height
-        requestAnimationFrame(function () {
-          var cpRect = cpEl.getBoundingClientRect();
-          var top = (cpRect.bottom > 0 ? cpRect.bottom : 16 + (cpEl.offsetHeight || 300)) + 8;
-          var left = cpRect.left > 0 ? cpRect.left : (window.innerWidth - 16 - 220);
-          layersPanel.style.top = top + 'px';
-          layersPanel.style.left = left + 'px';
-          layersPanel.style.right = 'auto';
+        if (readOnly) {
+          // The color picker is hidden for viewers, so dock independently (top-right)
+          layersAttachedToColorPicker = false;
+          layersPanel.style.top = '16px';
+          layersPanel.style.left = 'auto';
+          layersPanel.style.right = '16px';
           layersPanel.style.transform = 'none';
           layersPanel.classList.add('show');
-        });
+        } else {
+          layersAttachedToColorPicker = true;
+          var cpEl = document.getElementById('colorPicker');
+          // Defer getBoundingClientRect until layout is settled after renderRecents() may have changed picker height
+          requestAnimationFrame(function () {
+            var cpRect = cpEl.getBoundingClientRect();
+            var top = (cpRect.bottom > 0 ? cpRect.bottom : 16 + (cpEl.offsetHeight || 300)) + 8;
+            var left = cpRect.left > 0 ? cpRect.left : (window.innerWidth - 16 - 220);
+            layersPanel.style.top = top + 'px';
+            layersPanel.style.left = left + 'px';
+            layersPanel.style.right = 'auto';
+            layersPanel.style.transform = 'none';
+            layersPanel.classList.add('show');
+          });
+        }
       } else {
         layersPanel.classList.add('show');
       }
@@ -1596,25 +1743,30 @@
           nameEl.className = 'layer-name';
           nameEl.title = ann.text || ann.name;
           nameEl.textContent = ann.text || ann.name;
-          nameEl.addEventListener('click', function () {
-            openAnnotationComment(ann);
-          });
-
-          var del = document.createElement('button');
-          del.className = 'layer-delete';
-          del.setAttribute('aria-label', 'Delete layer');
-          del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
-          del.addEventListener('click', function () {
-            ann.konvaLayer.destroy();
-            annotations.splice(annotations.indexOf(ann), 1);
-            renderLayersPanel();
-            recordHistory();
-          });
+          if (!readOnly) {
+            nameEl.addEventListener('click', function () {
+              openAnnotationComment(ann);
+            });
+          }
 
           row.appendChild(eye);
           row.appendChild(dot);
           row.appendChild(nameEl);
-          row.appendChild(del);
+
+          if (!readOnly) {
+            var del = document.createElement('button');
+            del.className = 'layer-delete';
+            del.setAttribute('aria-label', 'Delete layer');
+            del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
+            del.addEventListener('click', function () {
+              ann.konvaLayer.destroy();
+              annotations.splice(annotations.indexOf(ann), 1);
+              renderLayersPanel();
+              recordHistory();
+            });
+            row.appendChild(del);
+          }
+
           layersList.appendChild(row);
         })(annotations[i]);
       }
@@ -1749,7 +1901,7 @@
       snap.annotations.forEach(function (ad) {
         var annLayer = new Konva.Layer();
         stage.add(annLayer);
-        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: currentTool === 'pan' });
+        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
         annLayer.add(annGroup);
         ad.strokes.forEach(function (sd) { annGroup.add(makeLine(sd, true)); });
         var ann = { name: ad.name, color: ad.color, konvaLayer: annLayer, konvaGroup: annGroup, visible: ad.visible, text: ad.text };
@@ -1817,7 +1969,7 @@
 
     // Keyboard: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo
     window.addEventListener('keydown', function (e) {
-      if (!imageNode || isTypingTarget(document.activeElement)) return;
+      if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
       if (!(e.ctrlKey || e.metaKey)) return;
       var k = e.key.toLowerCase();
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
@@ -2049,6 +2201,7 @@
 
     var dragDepth = 0;
     window.addEventListener('dragenter', function (e) {
+      if (readOnly) return;
       if (!hasFiles(e)) return;
       e.preventDefault();
       dragDepth++;
@@ -2071,6 +2224,7 @@
     });
     window.addEventListener('drop', function (e) {
       e.preventDefault();
+      if (readOnly) return;
       dragDepth = 0;
       dropEl.classList.remove('dragover');
       if (imageNode) dropEl.classList.add('hide');
@@ -2079,7 +2233,7 @@
     });
 
     // ---- File picker ----
-    function openPicker() { fileInput.value = ''; fileInput.click(); }
+    function openPicker() { if (readOnly) return; fileInput.value = ''; fileInput.click(); }
     document.getElementById('pickBtn').addEventListener('click', openPicker);
     document.getElementById('newBtn').addEventListener('click', openPicker);
     fileInput.addEventListener('change', function () {
@@ -2211,11 +2365,122 @@
     });
     compareExit.addEventListener('click', exitCompare);
 
+    // ---- Share (author side) ----
+    var shareBtn = document.getElementById('shareBtn');
+    shareBtn.addEventListener('click', function () {
+      if (!imageNode || !sourceBlob) return;
+      if (!shareEnabled()) {
+        showError('Sharing isn’t set up yet — add your Supabase URL and key to the file.');
+        return;
+      }
+      if (sourceBlob.size > MAX_UPLOAD_BYTES) {
+        showError('This image is too big to share (limit ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + 'MB).');
+        return;
+      }
+      shareBtn.disabled = true;
+      showToast('Creating share link…', true);
+      var id = makeShareId();
+      var path = id + '/v1.' + extForBlob(sourceBlob);
+      supaUpload(path, sourceBlob)
+        .then(function () {
+          return supaInsertSession({ id: id, annotations: snapshotState(), image_path: path });
+        })
+        .then(function () {
+          shareId = id;
+          var link = location.origin + location.pathname + '?s=' + id;
+          return copyToClipboard(link).then(function (ok) {
+            showToast(ok ? 'Share link copied to clipboard ✓' : 'Share link: ' + link, true);
+          });
+        })
+        .catch(function (err) {
+          showError('Couldn’t create the share link. ' + (err && err.message ? err.message : ''));
+        })
+        .then(function () { shareBtn.disabled = false; });
+    });
+
     // ---- Control buttons ----
     document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
     document.getElementById('zoomOut').addEventListener('click', function () { zoomByStep(1 / ZOOM_STEP); });
     document.getElementById('fitBtn').addEventListener('click', fitToScreen);
     zoomLabel.addEventListener('click', fitToScreen);
+
+    // ---- Round-trip: viewer uploads their new version (v2) ----
+    var v2Input      = document.getElementById('v2Input');
+    var uploadV2Btn  = document.getElementById('uploadV2Btn');
+    var compareV2Btn = document.getElementById('compareV2Btn');
+
+    uploadV2Btn.addEventListener('click', function () {
+      if (!shareId) return;
+      v2Input.value = '';
+      v2Input.click();
+    });
+    v2Input.addEventListener('change', function () {
+      if (!(v2Input.files && v2Input.files.length)) return;
+      var file = v2Input.files[0];
+      if (!file.type || file.type.indexOf('image/') !== 0) {
+        showError('That file isn’t an image we can open.');
+        return;
+      }
+      if (file.size > MAX_UPLOAD_BYTES) {
+        showError('This image is too big to upload (limit ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + 'MB).');
+        return;
+      }
+      uploadV2Btn.disabled = true;
+      showToast('Uploading your version…', true);
+      var path = shareId + '/v2.' + extForBlob(file);
+      supaUpload(path, file)
+        .then(function () { return supaAddVersion(shareId, path); })
+        .then(function () {
+          // Load it locally so before/after is available right away
+          var url = URL.createObjectURL(file);
+          var img = new Image();
+          img.onload = function () {
+            compareV2Image = img;
+            document.body.classList.add('has-v2');
+            showToast('New version uploaded ✓ — use Compare to see before / after', true);
+          };
+          img.onerror = function () { URL.revokeObjectURL(url); showToast('New version uploaded ✓', true); };
+          img.src = url;
+        })
+        .catch(function (err) { showError('Upload failed. ' + (err && err.message ? err.message : '')); })
+        .then(function () { uploadV2Btn.disabled = false; });
+    });
+    compareV2Btn.addEventListener('click', function () {
+      if (compareMode) { exitCompare(); return; }
+      if (compareV2Image) enterCompare(compareV2Image, 'New version');
+    });
+
+    // ---- Open a shared link (?s=<id>) in read-only viewer mode ----
+    (function bootstrapSharedLink() {
+      var sid = new URLSearchParams(location.search).get('s');
+      if (!sid) return;
+      if (!shareEnabled()) {
+        showError('This share link can’t open — sharing isn’t configured in this build.');
+        return;
+      }
+      showToast('Loading shared annotations…', true);
+      supaGetSession(sid).then(function (row) {
+        if (!row) { showError('That share link wasn’t found or has expired.'); return; }
+        readOnly = true;
+        shareId = sid;
+        document.body.classList.add('read-only');
+        return fetch(supaPublicUrl(row.image_path)).then(function (r) {
+          if (!r.ok) throw new Error('image ' + r.status);
+          return r.blob();
+        }).then(function (blob) {
+          pendingSnapshot = row.annotations;   // applied inside loadFile's rAF
+          loadFile(blob);
+          // If the photographer already sent a new version, set up before/after
+          if (row.image_v2_path) {
+            var v2 = new Image();
+            v2.onload = function () { compareV2Image = v2; document.body.classList.add('has-v2'); };
+            v2.src = supaPublicUrl(row.image_v2_path);
+          }
+        });
+      }).catch(function (err) {
+        showError('Couldn’t open the shared link. ' + (err && err.message ? err.message : ''));
+      });
+    })();
 
     updateZoomLabel();
   })();
