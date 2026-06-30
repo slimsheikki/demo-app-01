@@ -1975,13 +1975,16 @@
     function showCommentBox() {
       var bbox = getStagingBBox();
       var sc = stage.scaleX();
-      var screenCX = bbox.cx * sc + stage.x();
-      var screenMaxY = bbox.maxY * sc + stage.y();
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = f ? (f.x || 0) : 0;
+      var fOffY = f ? (f.y || 0) : 0;
+      var screenCX = (fOffX + bbox.cx) * sc + stage.x();
+      var screenMaxY = (fOffY + bbox.maxY) * sc + stage.y();
       var cbW = Math.min(340, window.innerWidth - 40);
       var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
       var top = screenMaxY + 16;
       if (top + 160 > window.innerHeight - 20) {
-        top = (bbox.minY * sc + stage.y()) - 176;
+        top = ((fOffY + bbox.minY) * sc + stage.y()) - 176;
       }
       top = Math.max(16, top);
       commentBox.style.left = left + 'px';
@@ -2019,13 +2022,16 @@
       editingAnnotation = ann;
       var bbox = getAnnotationBBox(ann);
       var sc = stage.scaleX();
-      var screenCX = bbox.cx * sc + stage.x();
-      var screenMaxY = bbox.maxY * sc + stage.y();
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = f ? (f.x || 0) : 0;
+      var fOffY = f ? (f.y || 0) : 0;
+      var screenCX = (fOffX + bbox.cx) * sc + stage.x();
+      var screenMaxY = (fOffY + bbox.maxY) * sc + stage.y();
       var cbW = Math.min(340, window.innerWidth - 40);
       var left = Math.max(20, Math.min(window.innerWidth - cbW - 20, screenCX - cbW / 2));
       var top = screenMaxY + 16;
       if (top + 160 > window.innerHeight - 20) {
-        top = (bbox.minY * sc + stage.y()) - 176;
+        top = ((fOffY + bbox.minY) * sc + stage.y()) - 176;
       }
       top = Math.max(16, top);
       commentBox.style.left = left + 'px';
