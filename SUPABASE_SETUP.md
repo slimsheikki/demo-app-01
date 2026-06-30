@@ -57,18 +57,56 @@ create policy "anon upload shots" on storage.objects
   for insert to anon with check (bucket_id = 'shots');
 ```
 
+### Multi-image projects (Phase 6)
+
+A share is now a **project** of one or more frames. `sessions.annotations` holds a
+JSON **array**, one entry per frame:
+`[{ "frameId", "imagePath", "imageV2Path", "annotations": <per-frame snapshot> }, …]`.
+`image_path` (NOT NULL) is set to the first frame's path (cover image + cleanup hint).
+Storage layout: `shots/<sid>/<frameId>/v1.<ext>` (and `/v2.<ext>`).
+
+Add a per-frame write-back RPC (column/shape-scoped: a viewer can set ONLY one
+frame's `imageV2Path`). `add_version` stays for old single-image links.
+
+```sql
+create or replace function set_frame_version(sid text, frame_id text, path text)
+returns void
+language sql security definer
+set search_path = ''
+as $$
+  update public.sessions
+  set annotations = (
+    select jsonb_agg(
+      case when elem->>'frameId' = frame_id
+           then jsonb_set(elem, '{imageV2Path}', to_jsonb(path))
+           else elem end
+      order by ord
+    )
+    from jsonb_array_elements(annotations) with ordinality as t(elem, ord)
+  )
+  where id = sid;
+$$;
+revoke execute on function set_frame_version(text, text, text) from public;
+grant execute on function set_frame_version(text, text, text) to anon;
+```
+
 ### Security-advisor notes (expected)
 After the above, two advisor warnings remain and are **by design** for a
 no-login share tool:
 - `anon insert` "always true" — anyone with the app can create a share.
-- `anon` can execute `add_version` — that's the photographer round-trip.
+- `anon` can execute `add_version` / `set_frame_version` — that's the photographer round-trip.
 
 ---
 
 ## 3. Auto-expiry: delete shares + files after 8 hours
 
 Storage rows can't be deleted from SQL (`storage.protect_delete()` blocks it), so
-file cleanup runs through the Storage API in a scheduled **Edge Function**.
+file cleanup runs through the Storage API in a scheduled **Edge Function**. It
+lists everything under each expired session's `<sid>/` prefix (recursing one level
+for per-frame folders), so it removes **all** of a project's files — both the
+legacy `<sid>/v1.*` layout and the new `<sid>/<frameId>/v1.*` layout — then deletes
+the rows. **Redeploy the function after the Phase 6 change** (the older version only
+removed the two legacy columns and would orphan extra frames).
 
 ### a. Deploy the function
 The code is `supabase/functions/cleanup-shares/index.ts` (in this repo). In the

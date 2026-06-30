@@ -1,11 +1,15 @@
-// Supabase Edge Function: cleanup-shares
+// Supabase Edge Function: cleanup-shares  (deployed as "smart-handler")
 //
-// Deletes share sessions — and their stored images — once they are older than
-// MAX_AGE_HOURS. Storage rows cannot be deleted via SQL (Supabase's
-// storage.protect_delete() blocks it), so file removal must go through the
-// Storage API, which is what this function does with the service-role client.
+// Deletes share sessions — and ALL their stored images — once they pass an
+// 8-hour TTL. Storage rows can't be deleted via SQL (storage.protect_delete()
+// blocks it), so file removal goes through the Storage API.
 //
-// Run it on a schedule (hourly) — see SUPABASE_SETUP.md for how to wire the cron.
+// Files for a session live under "<sessionId>/" — either directly
+// (legacy single-image: <sid>/v1.jpg) or one folder per frame
+// (projects: <sid>/<frameId>/v1.jpg, /v2.jpg). We list everything under the
+// session prefix (recursing one level) so both layouts, plus any orphans, go.
+//
+// Run it on a schedule (hourly) — see SUPABASE_SETUP.md.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -14,47 +18,59 @@ const BUCKET = "shots";
 
 Deno.serve(async () => {
   const supabase = createClient(
-    // These are injected into every Edge Function automatically.
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
   const cutoff = new Date(Date.now() - MAX_AGE_HOURS * 3600_000).toISOString();
 
-  // 1) Find expired sessions and the exact files they own (v1 + optional v2).
   const { data: expired, error } = await supabase
     .from("sessions")
-    .select("id, image_path, image_v2_path")
+    .select("id")
     .lt("created_at", cutoff);
 
-  if (error) {
-    return json({ ok: false, where: "select", error: error.message }, 500);
-  }
-  if (!expired || expired.length === 0) {
-    return json({ ok: true, deleted: 0, files: 0 });
-  }
+  if (error) return json({ ok: false, where: "select", error: error.message }, 500);
+  if (!expired || expired.length === 0) return json({ ok: true, sessions: 0, files: 0 });
 
-  const paths: string[] = [];
+  // Gather every stored file under each expired session's prefix.
+  let paths: string[] = [];
   for (const s of expired) {
-    if (s.image_path) paths.push(s.image_path);
-    if (s.image_v2_path) paths.push(s.image_v2_path);
+    paths = paths.concat(await listAllUnder(supabase, s.id + "/"));
   }
 
-  // 2) Delete the files via the Storage API (the only allowed path), in chunks.
+  // Delete files via the Storage API (the only allowed path), in chunks.
   for (let i = 0; i < paths.length; i += 100) {
-    const { error: delErr } = await supabase.storage
-      .from(BUCKET)
-      .remove(paths.slice(i, i + 100));
+    const { error: delErr } = await supabase.storage.from(BUCKET).remove(paths.slice(i, i + 100));
     if (delErr) return json({ ok: false, where: "storage", error: delErr.message }, 500);
   }
 
-  // 3) Only after the files are gone, remove the session rows.
-  const ids = expired.map((s) => s.id);
+  // Only after the files are gone, remove the session rows.
+  const ids = expired.map((s: { id: string }) => s.id);
   const { error: rowErr } = await supabase.from("sessions").delete().in("id", ids);
   if (rowErr) return json({ ok: false, where: "rows", error: rowErr.message }, 500);
 
-  return json({ ok: true, deleted: ids.length, files: paths.length });
+  return json({ ok: true, sessions: ids.length, files: paths.length });
 });
+
+// List all object paths under a prefix. Storage list() is NOT recursive: folder
+// entries come back with id === null, so we descend one level (enough for the
+// <sid>/<frameId>/file layout).
+async function listAllUnder(supabase: any, prefix: string): Promise<string[]> {
+  const out: string[] = [];
+  const { data: level1 } = await supabase.storage.from(BUCKET).list(prefix, { limit: 1000 });
+  for (const entry of (level1 || [])) {
+    if (entry.id === null) {
+      const sub = prefix + entry.name + "/";
+      const { data: level2 } = await supabase.storage.from(BUCKET).list(sub, { limit: 1000 });
+      for (const file of (level2 || [])) {
+        if (file.id !== null) out.push(sub + file.name);
+      }
+    } else {
+      out.push(prefix + entry.name);
+    }
+  }
+  return out;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

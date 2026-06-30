@@ -1120,6 +1120,8 @@
     var sourceBlob = null;       // the original image File/Blob, kept for upload
     var readOnly = false;        // true when viewing a shared link (?s=<id>)
     var shareId = null;          // the session id when viewing/owning a shared link
+    var projectId = null;        // same id, used by the multi-frame project paths
+    var legacyShare = false;     // true when viewing an old single-image link shape
     var pendingSnapshot = null;  // annotations to restore once the image is loaded
     var compareV2Image = null;   // photographer's new version, loaded for before/after
 
@@ -1184,12 +1186,23 @@
         return r.json();
       }).then(function (rows) { return (rows && rows[0]) || null; });
     }
-    // Register a v2 image path on an existing session (column-scoped RPC).
+    // Register a v2 image path on an existing single-image (legacy) session.
     function supaAddVersion(id, path) {
       return fetch(SUPA_URL + '/rest/v1/rpc/add_version', {
         method: 'POST',
         headers: supaHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ sid: id, path: path })
+      }).then(function (r) {
+        if (!r.ok) return r.text().then(function (t) { throw new Error('update failed (' + r.status + '): ' + t); });
+        return true;
+      });
+    }
+    // Set the v2 path on ONE frame of a project (column/shape-scoped RPC).
+    function supaSetFrameVersion(id, frameId, path) {
+      return fetch(SUPA_URL + '/rest/v1/rpc/set_frame_version', {
+        method: 'POST',
+        headers: supaHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ sid: id, frame_id: frameId, path: path })
       }).then(function (r) {
         if (!r.ok) return r.text().then(function (t) { throw new Error('update failed (' + r.status + '): ' + t); });
         return true;
@@ -1531,7 +1544,8 @@
       frames.forEach(function (f, idx) {
         var item = document.createElement('div');
         item.className = 'frame-thumb' + (idx === activeFrameIndex ? ' active' : '');
-        if (f.thumb) { var im = document.createElement('img'); im.src = f.thumb; im.alt = ''; item.appendChild(im); }
+        var src = f.thumb || (f.imagePath ? supaPublicUrl(f.imagePath) : null);
+        if (src) { var im = document.createElement('img'); im.src = src; im.alt = ''; item.appendChild(im); }
         item.addEventListener('click', function () { switchFrame(idx); });
         if (!readOnly) {
           var del = document.createElement('button');
@@ -2640,29 +2654,46 @@
     });
     compareExit.addEventListener('click', exitCompare);
 
-    // ---- Share (author side) ----
+    // ---- Share (author side) — uploads every frame as one project ----
     var shareBtn = document.getElementById('shareBtn');
     shareBtn.addEventListener('click', function () {
-      if (!imageNode || !sourceBlob) return;
+      if (!frames.length || activeFrameIndex < 0) return;
       if (!shareEnabled()) {
         showError('Sharing isn’t set up yet — add your Supabase URL and key to the file.');
         return;
       }
-      if (sourceBlob.size > MAX_UPLOAD_BYTES) {
-        showError('This image is too big to share (limit ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + 'MB).');
+      // Make sure the active frame's live annotations are captured
+      frames[activeFrameIndex].snapshot = snapshotState();
+      var tooBig = frames.filter(function (f) { return f.blob && f.blob.size > MAX_UPLOAD_BYTES; });
+      if (tooBig.length) {
+        showError('A photo is too big to share (limit ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + 'MB each).');
         return;
       }
+
       shareBtn.disabled = true;
-      showToast('Creating share link…', true);
-      var id = makeShareId();
-      var path = id + '/v1.' + extForBlob(sourceBlob);
-      supaUpload(path, sourceBlob)
+      var projId = makeShareId();
+      var n = frames.length;
+
+      // Upload each frame's v1 sequentially (clear progress), then insert the project doc.
+      var idx = 0;
+      function uploadNext() {
+        if (idx >= n) return Promise.resolve();
+        var f = frames[idx];
+        var path = projId + '/' + f.id + '/v1.' + extForBlob(f.blob);
+        showToast('Uploading ' + (idx + 1) + '/' + n + '…', true);
+        return supaUpload(path, f.blob).then(function () { f.imagePath = path; idx++; return uploadNext(); });
+      }
+
+      uploadNext()
         .then(function () {
-          return supaInsertSession({ id: id, annotations: snapshotState(), image_path: path });
+          var doc = frames.map(function (f) {
+            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot };
+          });
+          return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
         })
         .then(function () {
-          shareId = id;
-          var link = location.origin + location.pathname + '?s=' + id;
+          shareId = projId; projectId = projId;
+          var link = location.origin + location.pathname + '?s=' + projId;
           return copyToClipboard(link).then(function (ok) {
             showToast(ok ? 'Share link copied to clipboard ✓' : 'Share link: ' + link, true);
           });
@@ -2691,6 +2722,8 @@
     });
     v2Input.addEventListener('change', function () {
       if (!(v2Input.files && v2Input.files.length)) return;
+      if (activeFrameIndex < 0 || !frames[activeFrameIndex]) return;
+      var f = frames[activeFrameIndex];
       var file = v2Input.files[0];
       if (!file.type || file.type.indexOf('image/') !== 0) {
         showError('That file isn’t an image we can open.');
@@ -2702,15 +2735,22 @@
       }
       uploadV2Btn.disabled = true;
       showToast('Uploading your version…', true);
-      var path = shareId + '/v2.' + extForBlob(file);
+      // Legacy single-image links store v2 in a column; projects store it per frame.
+      var path = legacyShare
+        ? (projectId + '/v2.' + extForBlob(file))
+        : (projectId + '/' + f.id + '/v2.' + extForBlob(file));
       supaUpload(path, file)
-        .then(function () { return supaAddVersion(shareId, path); })
         .then(function () {
+          return legacyShare ? supaAddVersion(projectId, path)
+                             : supaSetFrameVersion(projectId, f.id, path);
+        })
+        .then(function () {
+          f.imageV2Path = path;
           // Load it locally so before/after is available right away
           var url = URL.createObjectURL(file);
           var img = new Image();
           img.onload = function () {
-            compareV2Image = img;
+            f.v2Image = img; compareV2Image = img;
             document.body.classList.add('has-v2');
             showToast('New version uploaded ✓ — use Compare to see before / after', true);
           };
@@ -2737,21 +2777,33 @@
       supaGetSession(sid).then(function (row) {
         if (!row) { showError('That share link wasn’t found or has expired.'); return; }
         readOnly = true;
-        shareId = sid;
+        shareId = sid; projectId = sid;
         document.body.classList.add('read-only');
-        return fetch(supaPublicUrl(row.image_path)).then(function (r) {
-          if (!r.ok) throw new Error('image ' + r.status);
-          return r.blob();
-        }).then(function (blob) {
-          pendingSnapshot = row.annotations;   // applied inside loadFile's rAF
-          loadFile(blob);
-          // If the photographer already sent a new version, set up before/after
-          if (row.image_v2_path) {
-            var v2 = new Image();
-            v2.onload = function () { compareV2Image = v2; document.body.classList.add('has-v2'); };
-            v2.src = supaPublicUrl(row.image_v2_path);
-          }
-        });
+
+        var doc = row.annotations;
+        if (Array.isArray(doc)) {
+          // New project shape: one entry per frame
+          legacyShare = false;
+          frames = doc.map(function (el) {
+            return {
+              id: el.frameId, image: null, blob: null, imgW: 0, imgH: 0,
+              imagePath: el.imagePath, imageV2Path: el.imageV2Path || null, v2Image: null,
+              snapshot: el.annotations, history: [], histIndex: -1, thumb: null
+            };
+          });
+        } else {
+          // Legacy single-image shape: build a one-frame project
+          legacyShare = true;
+          frames = [{
+            id: 'f0', image: null, blob: null, imgW: 0, imgH: 0,
+            imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
+            snapshot: doc, history: [], histIndex: -1, thumb: null
+          }];
+        }
+        if (!frames.length) { showError('This shared project has no images.'); return; }
+
+        showChrome();
+        return switchFrame(0);   // hydrates frame 0's image, restores annotations, renders filmstrip
       }).catch(function (err) {
         showError('Couldn’t open the shared link. ' + (err && err.message ? err.message : ''));
       });
