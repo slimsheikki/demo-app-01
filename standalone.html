@@ -1156,10 +1156,12 @@
       return SUPA_URL + '/storage/v1/object/public/' + SUPA_BUCKET + '/' + path;
     }
     // Upload a blob to the bucket at `path`. Resolves on success.
+    // Plain insert (no upsert): paths are unique, and upsert would also require
+    // UPDATE/SELECT storage policies, not just the anon INSERT policy.
     function supaUpload(path, blob) {
       return fetch(SUPA_URL + '/storage/v1/object/' + SUPA_BUCKET + '/' + path, {
         method: 'POST',
-        headers: supaHeaders({ 'Content-Type': blob.type || 'application/octet-stream', 'x-upsert': 'true' }),
+        headers: supaHeaders({ 'Content-Type': blob.type || 'application/octet-stream' }),
         body: blob
       }).then(function (r) {
         if (!r.ok) return r.text().then(function (t) { throw new Error('upload failed (' + r.status + '): ' + t); });
@@ -2735,10 +2737,12 @@
       }
       uploadV2Btn.disabled = true;
       showToast('Uploading your version…', true);
+      // Unique filename so re-uploads never collide (we don't use upsert).
+      var stamp = makeShareId().slice(0, 8);
       // Legacy single-image links store v2 in a column; projects store it per frame.
       var path = legacyShare
-        ? (projectId + '/v2.' + extForBlob(file))
-        : (projectId + '/' + f.id + '/v2.' + extForBlob(file));
+        ? (projectId + '/v2-' + stamp + '.' + extForBlob(file))
+        : (projectId + '/' + f.id + '/v2-' + stamp + '.' + extForBlob(file));
       supaUpload(path, file)
         .then(function () {
           return legacyShare ? supaAddVersion(projectId, path)
