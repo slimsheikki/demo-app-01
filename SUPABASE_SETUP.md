@@ -71,17 +71,23 @@ Storage rows can't be deleted from SQL (`storage.protect_delete()` blocks it), s
 file cleanup runs through the Storage API in a scheduled **Edge Function**.
 
 ### a. Deploy the function
-`supabase/functions/cleanup-shares/index.ts` (in this repo). Deploy it either way:
+The code is `supabase/functions/cleanup-shares/index.ts` (in this repo). In the
+current Supabase project it was deployed under the dashboard's default function
+name **`smart-handler`** — the deployed name is cosmetic, so the steps below use
+`smart-handler`. Deploy it either way:
 
-- **Dashboard:** Edge Functions → Deploy a new function → name it `cleanup-shares`
-  → paste the file contents → Deploy. (`SUPABASE_URL` and
+- **Dashboard:** Edge Functions → Deploy a new function (default name
+  `smart-handler` is fine) → paste the file contents → Deploy. (`SUPABASE_URL` and
   `SUPABASE_SERVICE_ROLE_KEY` are injected automatically — no secrets to add.)
-- **CLI:** `supabase functions deploy cleanup-shares`
+- **CLI:** `supabase functions deploy smart-handler`
+
+Verify with the function's **Send test request** — it should return
+`{"ok":true,"deleted":0,"files":0}`.
 
 ### b. Schedule it hourly
 - **Dashboard (preferred):** Integrations → Cron (or Database → Cron Jobs) →
   Create job → schedule `15 * * * *` → type **Supabase Edge Function** →
-  pick `cleanup-shares`. Auth is wired for you.
+  pick `smart-handler`. Auth is wired for you.
 
 - **SQL fallback** (needs `pg_cron` + `pg_net` enabled in Database → Extensions).
   The anon key is public, so it's fine in the cron body; it only authorizes the
@@ -92,7 +98,7 @@ file cleanup runs through the Storage API in a scheduled **Edge Function**.
     '15 * * * *',
     $$
     select net.http_post(
-      url     := 'https://<project>.supabase.co/functions/v1/cleanup-shares',
+      url     := 'https://<project>.supabase.co/functions/v1/smart-handler',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
         'Authorization', 'Bearer <anon public key>'
