@@ -1554,7 +1554,7 @@
         activeFrameIndex = -1;
         if (compareMode) exitCompare();
         if (imageNode) { imageNode.destroy(); imageNode = null; }
-        annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+        annotations.forEach(function (a) { a.konvaGroup.destroy(); });
         annotations = [];
         stagingLayer.destroyChildren(); stagingStrokes = [];
         worldLayer.batchDraw(); stagingLayer.batchDraw();
@@ -2082,7 +2082,7 @@
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       var gx = ann.konvaGroup ? ann.konvaGroup.x() : 0;
       var gy = ann.konvaGroup ? ann.konvaGroup.y() : 0;
-      (ann.konvaGroup || ann.konvaLayer).find('Line').forEach(function (line) {
+      ann.konvaGroup.find('Line').forEach(function (line) {
         var pts = line.points();
         for (var i = 0; i < pts.length; i += 2) {
           minX = Math.min(minX, pts[i] + gx);
@@ -2244,7 +2244,7 @@
             : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20C5 20 1 12 1 12a18.06 18.06 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke-linecap="round"/><path d="M1 1l22 22" stroke-linecap="round"/></svg>';
           eye.addEventListener('click', function () {
             ann.visible = !ann.visible;
-            ann.konvaLayer.visible(ann.visible);
+            ann.konvaGroup.visible(ann.visible);
             stage.batchDraw();
             renderLayersPanel();
             recordHistory();
@@ -2274,7 +2274,7 @@
             del.setAttribute('aria-label', 'Delete layer');
             del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
             del.addEventListener('click', function () {
-              ann.konvaLayer.destroy();
+              ann.konvaGroup.destroy();
               annotations.splice(annotations.indexOf(ann), 1);
               renderLayersPanel();
               recordHistory();
