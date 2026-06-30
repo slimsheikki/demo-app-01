@@ -177,6 +177,61 @@
   }
   #controls.show { display: flex; }
 
+  /* ---- Filmstrip (multi-image projects) ---- */
+  #filmstrip {
+    position: absolute;
+    left: 50%;
+    bottom: calc(84px + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: none;
+    max-width: min(92vw, 760px);
+    padding: 8px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 20;
+  }
+  #filmstrip.show { display: block; }
+  #filmstripList { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .frame-thumb {
+    position: relative;
+    flex: 0 0 auto;
+    width: 72px; height: 54px;
+    border-radius: 9px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    background: rgba(255,255,255,0.05);
+    transition: border-color .14s ease;
+  }
+  .frame-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .frame-thumb:hover { border-color: rgba(255,255,255,0.25); }
+  .frame-thumb.active { border-color: rgba(255,255,255,0.92); box-shadow: 0 0 0 1px rgba(255,255,255,0.25); }
+  .frame-del {
+    position: absolute; top: 2px; right: 2px;
+    width: 18px; height: 18px; padding: 0;
+    border: none; border-radius: 50%;
+    background: rgba(0,0,0,0.55); color: #fff;
+    display: none; align-items: center; justify-content: center;
+    cursor: pointer;
+  }
+  .frame-thumb:hover .frame-del { display: flex; }
+  .frame-del svg { width: 11px; height: 11px; stroke: currentColor; stroke-width: 2.4; fill: none; }
+  .frame-add {
+    flex: 0 0 auto;
+    width: 72px; height: 54px;
+    border-radius: 9px;
+    border: 1.5px dashed rgba(255,255,255,0.25);
+    background: transparent; color: rgba(255,255,255,0.6);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .frame-add:hover { border-color: rgba(255,255,255,0.5); color: #fff; }
+  .frame-add svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+
   /* Viewer-only controls: hidden in the normal editor, shown on a shared link */
   #uploadV2Btn, #compareV2Btn { display: none; }
   body.read-only #uploadV2Btn { display: flex; }
@@ -813,6 +868,9 @@
   </div>
 
   <!-- Zoom / pan controls -->
+  <!-- Filmstrip: thumbnails for multi-image projects (shown when >1 frame) -->
+  <div id="filmstrip"><div id="filmstripList"></div></div>
+
   <div id="controls">
     <button class="cbtn" id="zoomOut" title="Zoom out" aria-label="Zoom out">
       <svg viewBox="0 0 24 24"><path d="M5 12h14" stroke-linecap="round"/></svg>
@@ -937,7 +995,7 @@
   <!-- Error toast -->
   <div id="err"></div>
 
-  <input type="file" id="fileInput" accept="image/*">
+  <input type="file" id="fileInput" accept="image/*" multiple>
   <input type="file" id="compareInput" accept="image/*">
   <input type="file" id="v2Input" accept="image/*">
 
@@ -1005,6 +1063,8 @@
     var errEl       = document.getElementById('err');
     var fileInput   = document.getElementById('fileInput');
     var zoomLabel   = document.getElementById('zoomLabel');
+    var filmstrip   = document.getElementById('filmstrip');
+    var filmstripList = document.getElementById('filmstripList');
 
     // ---- Guard: the viewer engine (Konva) loads from a CDN. If that fails
     // (no connection, CDN blocked), bail loudly instead of dying silently. ----
@@ -1062,6 +1122,15 @@
     var shareId = null;          // the session id when viewing/owning a shared link
     var pendingSnapshot = null;  // annotations to restore once the image is loaded
     var compareV2Image = null;   // photographer's new version, loaded for before/after
+
+    // ---- Multi-image project (frames) ----
+    // Each frame is one photo with its own annotations / undo history / v2.
+    // The single-image globals above (imageNode, imgW/imgH, sourceBlob, annotations,
+    // history…) always mirror the *active* frame; other frames hold serialized data.
+    var frames = [];             // [{ id, image, blob, imgW, imgH, imagePath,
+                                 //    imageV2Path, v2Image, snapshot, history, histIndex, thumb }]
+    var activeFrameIndex = -1;
+    var frameSeq = 0;
 
     // ---- Error toast ----
     var errTimer = null;
@@ -1206,6 +1275,9 @@
       if (controls.classList.contains('show')) {
         bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
       }
+      if (filmstrip.classList.contains('show')) {
+        bottomInset = Math.max(bottomInset, (window.innerHeight - filmstrip.getBoundingClientRect().top) + gap);
+      }
       var availH = Math.max(40, sh - topInset - bottomInset);
       var scale = clamp(Math.min(sw / imgW, availH / imgH) * FIT_PADDING);
       stage.scale({ x: scale, y: scale });
@@ -1279,6 +1351,206 @@
       };
 
       img.src = url;
+    }
+
+    // ---- Frames (multi-image) ----
+    function makeFrameId() { return 'f' + (frameSeq++); }
+
+    // Decode a blob/file into an HTMLImageElement (+ natural dims).
+    function decodeImage(blob) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(blob);
+        var img = new Image();
+        img.onload = function () {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          URL.revokeObjectURL(url);
+          if (!w || !h) { reject(new Error('empty')); return; }
+          resolve({ img: img, w: w, h: h });
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
+        img.src = url;
+      });
+    }
+
+    // A small cached thumbnail (data URL) for the filmstrip.
+    function makeThumb(img, w, h) {
+      var max = 120;
+      var scale = Math.min(max / w, max / h, 1);
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * scale));
+      c.height = Math.max(1, Math.round(h * scale));
+      try {
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', 0.6);
+      } catch (e) { return null; }
+    }
+
+    function showChrome() {
+      dropEl.classList.add('hide');
+      controls.classList.add('show');
+      toolbar.classList.add('show');
+      document.getElementById('colorPicker').style.display = 'flex';
+      stageEl.classList.add('grabbable');
+    }
+
+    // Add one or more image files as new frames (editor / author side).
+    function addFrames(fileList) {
+      if (readOnly) return;
+      var files = [];
+      for (var i = 0; i < fileList.length; i++) {
+        var f = fileList[i];
+        if (f && f.type && f.type.indexOf('image/') === 0) files.push(f);
+      }
+      if (!files.length) { showError('That file isn’t an image we can open.'); return; }
+
+      var wasEmpty = frames.length === 0;
+      var firstNewIndex = frames.length;
+
+      Promise.all(files.map(function (f) {
+        return decodeImage(f).then(
+          function (r) { return { ok: true, file: f, img: r.img, w: r.w, h: r.h }; },
+          function () { return { ok: false }; }
+        );
+      })).then(function (results) {
+        var failed = 0;
+        results.forEach(function (res) {
+          if (!res.ok) { failed++; return; }
+          frames.push({
+            id: makeFrameId(), image: res.img, blob: res.file,
+            imgW: res.w, imgH: res.h,
+            imagePath: null, imageV2Path: null, v2Image: null,
+            snapshot: { annotationCount: 0, staging: [], annotations: [] },
+            history: [], histIndex: -1,
+            thumb: makeThumb(res.img, res.w, res.h)
+          });
+        });
+        if (failed) showError('Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.');
+        if (frames.length === 0) return;
+        if (wasEmpty) showChrome();
+        if (frames.length > firstNewIndex) switchFrame(firstNewIndex);
+        else renderFilmstrip();
+      });
+    }
+
+    // Viewer side: pull a frame's image (and any v2) from storage on demand.
+    function hydrateFrame(frame) {
+      if (frame.image) return Promise.resolve();
+      return fetch(supaPublicUrl(frame.imagePath))
+        .then(function (r) { if (!r.ok) throw new Error('image ' + r.status); return r.blob(); })
+        .then(function (blob) { frame.blob = blob; return decodeImage(blob); })
+        .then(function (res) {
+          frame.image = res.img; frame.imgW = res.w; frame.imgH = res.h;
+          if (!frame.thumb) frame.thumb = makeThumb(res.img, res.w, res.h);
+          if (frame.imageV2Path && !frame.v2Image) {
+            return fetch(supaPublicUrl(frame.imageV2Path))
+              .then(function (r) { return r.blob(); })
+              .then(decodeImage)
+              .then(function (v) { frame.v2Image = v.img; });
+          }
+        });
+    }
+
+    // Make frame i the live one: save the current frame, then rebuild from the target.
+    function switchFrame(i) {
+      if (i < 0 || i >= frames.length || i === activeFrameIndex) return Promise.resolve();
+      var target = frames[i];
+      var pre = (!target.image && target.imagePath) ? hydrateFrame(target) : Promise.resolve();
+      return pre.then(function () {
+        if (compareMode) exitCompare();
+        // Serialize the outgoing frame's live state back onto its record
+        if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
+          var cur = frames[activeFrameIndex];
+          cur.snapshot = snapshotState();
+          cur.history = history;
+          cur.histIndex = histIndex;
+        }
+        activeFrameIndex = i;
+
+        // Swap the image
+        if (imageNode) { imageNode.destroy(); imageNode = null; }
+        imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
+        imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
+        layer.add(imageNode);
+        imageNode.moveToBottom();
+
+        // Swap the undo stack and rebuild annotations from the frame's snapshot
+        history = target.history; histIndex = target.histIndex;
+        restoreSnapshot(target.snapshot);
+        if (histIndex < 0) resetHistory();   // fresh frame → record a baseline
+
+        setTool(readOnly ? 'pan' : currentTool);
+        renderFilmstrip();        // show/refresh strip first so fit reserves its height
+        fitToScreen();
+        renderLayersPanel();
+        updateUndoRedoButtons();
+
+        // Per-frame before/after availability
+        compareV2Image = target.v2Image || null;
+        if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
+        else document.body.classList.remove('has-v2');
+      });
+    }
+
+    // Remove a frame (author, pre-share).
+    function removeFrame(i) {
+      if (readOnly || i < 0 || i >= frames.length) return;
+      var removingActive = (i === activeFrameIndex);
+      frames.splice(i, 1);
+
+      if (frames.length === 0) {
+        activeFrameIndex = -1;
+        if (compareMode) exitCompare();
+        if (imageNode) { imageNode.destroy(); imageNode = null; }
+        annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+        annotations = [];
+        stagingLayer.destroyChildren(); stagingStrokes = [];
+        layer.batchDraw(); stagingLayer.batchDraw();
+        dropEl.classList.remove('hide');
+        controls.classList.remove('show');
+        toolbar.classList.remove('show');
+        document.getElementById('colorPicker').style.display = 'none';
+        layersPanel.classList.remove('show');
+        renderFilmstrip();
+        return;
+      }
+      if (removingActive) {
+        activeFrameIndex = -1;   // live state belonged to the removed frame; load fresh
+        switchFrame(Math.min(i, frames.length - 1));
+      } else {
+        if (i < activeFrameIndex) activeFrameIndex--;
+        renderFilmstrip();
+      }
+    }
+
+    // Render the bottom thumbnail filmstrip (shown only when there's more than one frame).
+    function renderFilmstrip() {
+      if (frames.length <= 1) { filmstrip.classList.remove('show'); filmstripList.innerHTML = ''; return; }
+      filmstrip.classList.add('show');
+      filmstripList.innerHTML = '';
+      frames.forEach(function (f, idx) {
+        var item = document.createElement('div');
+        item.className = 'frame-thumb' + (idx === activeFrameIndex ? ' active' : '');
+        if (f.thumb) { var im = document.createElement('img'); im.src = f.thumb; im.alt = ''; item.appendChild(im); }
+        item.addEventListener('click', function () { switchFrame(idx); });
+        if (!readOnly) {
+          var del = document.createElement('button');
+          del.className = 'frame-del';
+          del.setAttribute('aria-label', 'Remove frame');
+          del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12" stroke-linecap="round"/></svg>';
+          del.addEventListener('click', function (e) { e.stopPropagation(); removeFrame(idx); });
+          item.appendChild(del);
+        }
+        filmstripList.appendChild(item);
+      });
+      if (!readOnly) {
+        var add = document.createElement('button');
+        add.className = 'frame-add';
+        add.setAttribute('aria-label', 'Add images');
+        add.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>';
+        add.addEventListener('click', function () { openPicker(); });
+        filmstripList.appendChild(add);
+      }
     }
 
     // ---- Stage sizing ----
@@ -2229,7 +2501,7 @@
       dropEl.classList.remove('dragover');
       if (imageNode) dropEl.classList.add('hide');
       var files = e.dataTransfer && e.dataTransfer.files;
-      if (files && files.length) loadFile(files[0]);
+      if (files && files.length) addFrames(files);
     });
 
     // ---- File picker ----
@@ -2237,7 +2509,7 @@
     document.getElementById('pickBtn').addEventListener('click', openPicker);
     document.getElementById('newBtn').addEventListener('click', openPicker);
     fileInput.addEventListener('change', function () {
-      if (fileInput.files && fileInput.files.length) loadFile(fileInput.files[0]);
+      if (fileInput.files && fileInput.files.length) addFrames(fileInput.files);
     });
 
     // ---- Before/after comparison ----
@@ -2290,6 +2562,9 @@
       var bottomBound = vh - compareBar.offsetHeight - 8;
       if (controls.classList.contains('show')) {
         bottomBound = Math.min(bottomBound, controls.getBoundingClientRect().top - compareBar.offsetHeight - 10);
+      }
+      if (filmstrip.classList.contains('show')) {
+        bottomBound = Math.min(bottomBound, filmstrip.getBoundingClientRect().top - compareBar.offsetHeight - 10);
       }
       var barTop = Math.max(8, Math.min(bottomBound, imgBot + 12));
       compareBar.style.left = barLeft + 'px';
