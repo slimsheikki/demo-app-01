@@ -2138,13 +2138,10 @@
       var annName = 'Comment ' + annotationCount;
       var color = DRAW_COLOR;
 
-      var annLayer = new Konva.Layer();
-      stage.add(annLayer);
       stagingLayer.moveToTop();
 
       // Group makes the annotation draggable as a unit
-      var annGroup = new Konva.Group({ draggable: currentTool === 'pan' });
-      annLayer.add(annGroup);
+      var annGroup = new Konva.Group({ draggable: !readOnly && currentTool === 'pan' });
 
       // Move strokes from staging into the group
       stagingStrokes.forEach(function (line) {
@@ -2154,13 +2151,22 @@
       });
       stagingStrokes = [];
 
-      var ann = { name: annName, color: color, konvaLayer: annLayer, konvaGroup: annGroup, visible: true, text: text || '' };
+      // Add annotation group to the active artboard group (or worldLayer in single-image mode)
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (af && af.artboardGroup) {
+        af.artboardGroup.add(annGroup);
+      } else {
+        worldLayer.add(annGroup);
+      }
+
+      var ann = { name: annName, color: color, konvaGroup: annGroup, visible: true, text: text || '' };
       attachGroupHandlers(ann);
 
-      annLayer.batchDraw();
+      worldLayer.batchDraw();
       stagingLayer.batchDraw();
 
       annotations.push(ann);
+      if (af) af.liveAnnotations = annotations;
       // Add committed color to recents
       var hexLow = color.toLowerCase();
       var idx = recentColors.indexOf(hexLow);
@@ -2400,25 +2406,28 @@
 
     function restoreSnapshot(snap) {
       // Tear down current live state
-      annotations.forEach(function (a) { a.konvaLayer.destroy(); });
+      annotations.forEach(function (a) { a.konvaGroup.destroy(); });
       annotations = [];
       stagingLayer.destroyChildren();
       stagingStrokes = [];
       editingAnnotation = null;
 
+      // Find parent container for annotations
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var annParent = (af && af.artboardGroup) ? af.artboardGroup : worldLayer;
+
       // Rebuild committed annotations (oldest first so z-order matches)
       snap.annotations.forEach(function (ad) {
-        var annLayer = new Konva.Layer();
-        stage.add(annLayer);
         var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
-        annLayer.add(annGroup);
+        annParent.add(annGroup);
         ad.strokes.forEach(function (sd) { annGroup.add(makeLine(sd, true)); });
-        var ann = { name: ad.name, color: ad.color, konvaLayer: annLayer, konvaGroup: annGroup, visible: ad.visible, text: ad.text };
+        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
         attachGroupHandlers(ann);
-        annLayer.visible(ad.visible);
-        annLayer.batchDraw();
+        annGroup.visible(ann.visible);
         annotations.push(ann);
       });
+
+      if (af) af.liveAnnotations = annotations;
 
       // Rebuild staging strokes
       snap.staging.forEach(function (sd) {
@@ -2427,6 +2436,7 @@
         stagingStrokes.push(line);
       });
       stagingLayer.moveToTop();
+      worldLayer.batchDraw();
       stagingLayer.batchDraw();
 
       annotationCount = snap.annotationCount;
