@@ -2024,6 +2024,12 @@
       };
     }
 
+    function getActiveArtboardPointer() {
+      var pos = getCanvasPointer();
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      return { x: pos.x - (f ? f.x || 0 : 0), y: pos.y - (f ? f.y || 0 : 0) };
+    }
+
     // Bounding box of all staging strokes (canvas space)
     function getStagingBBox() {
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2281,7 +2287,7 @@
       if (e.evt.button != null && e.evt.button !== 0) return; // ignore middle/right mouse buttons
       if (e.evt.touches && e.evt.touches.length > 1) return;
       isDrawing = true;
-      var pos = getCanvasPointer();
+      var pos = getActiveArtboardPointer();
       currentLine = new Konva.Line({
         points: [pos.x, pos.y, pos.x, pos.y],
         stroke: DRAW_COLOR,
@@ -2298,7 +2304,7 @@
     stage.on('mousemove touchmove', function (e) {
       if (!isDrawing || currentTool !== 'draw') return;
       if (e.evt.touches && e.evt.touches.length > 1) { isDrawing = false; return; }
-      var pos = getCanvasPointer();
+      var pos = getActiveArtboardPointer();
       var pts = currentLine.points().slice();
       pts.push(pos.x, pos.y);
       currentLine.points(pts);
