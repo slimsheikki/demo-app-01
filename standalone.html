@@ -2704,25 +2704,24 @@
       if (!compareMode) return;
       var scale = stage.scaleX();
       var vw = window.innerWidth, vh = window.innerHeight;
+      var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      var fOffX = f ? (f.x || 0) : 0;
+      var fOffY = f ? (f.y || 0) : 0;
       var x = Math.max(0, Math.min(imgW, dividerImgX));
-      var screenX  = stage.x() + x * scale;
-      var imgTop   = stage.y();
-      var imgBot   = stage.y() + imgH * scale;
+      var screenX  = stage.x() + (fOffX + x) * scale;
+      var imgTop   = stage.y() + fOffY * scale;
+      var imgBot   = stage.y() + (fOffY + imgH) * scale;
 
-      // Divider strip follows the image column
       compareDivider.style.left = screenX + 'px';
 
-      // White line spans only the image's (visible) vertical extent — no overflow past the image
       var lineTop = Math.max(0, imgTop);
       var lineBot = Math.min(vh, imgBot);
       compareLine.style.top = lineTop + 'px';
       compareLine.style.height = Math.max(0, lineBot - lineTop) + 'px';
 
-      // Grip centered on the visible portion of the line
       compareHandle.style.top = ((lineTop + lineBot) / 2) + 'px';
 
-      // Compare bar: centered under the image, clamped so it stays reachable
-      var imgCenterX = stage.x() + (imgW * scale) / 2;
+      var imgCenterX = stage.x() + (fOffX + imgW / 2) * scale;
       var halfBar = compareBar.offsetWidth / 2;
       var barLeft = Math.max(halfBar + 8, Math.min(vw - halfBar - 8, imgCenterX));
       var bottomBound = vh - compareBar.offsetHeight - 8;
@@ -2741,6 +2740,10 @@
       compareImgNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH, listening: false });
       compareGroup = new Konva.Group({ clipFunc: compareClip });
       compareGroup.add(compareImgNode);
+      var af2 = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (af2 && af2.artboardGroup) {
+        compareGroup.position({ x: af2.x, y: af2.y });
+      }
       worldLayer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
       compareGroup.moveToTop();
       compareMode = true;
@@ -2772,7 +2775,9 @@
       compareHandle.addEventListener('pointermove', function (e) {
         if (!dragging) return;
         var scale = stage.scaleX();
-        dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale));
+        var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+        var fOffX = f ? (f.x || 0) : 0;
+        dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale - fOffX));
         syncCompareUI();
         worldLayer.batchDraw();
       });
