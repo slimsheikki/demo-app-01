@@ -1094,8 +1094,8 @@
       height: window.innerHeight,
       draggable: true
     });
-    var layer = new Konva.Layer();
-    stage.add(layer);
+    var worldLayer = new Konva.Layer();
+    stage.add(worldLayer);
     var stagingLayer = new Konva.Layer();
     stage.add(stagingLayer);
 
@@ -1334,7 +1334,7 @@
         if (compareMode) exitCompare();
         if (imageNode) { imageNode.destroy(); }
         imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
-        layer.add(imageNode);
+        worldLayer.add(imageNode);
 
         dropEl.classList.add('hide');
         controls.classList.add('show');
@@ -1507,7 +1507,7 @@
         if (imageNode) { imageNode.destroy(); imageNode = null; }
         imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
         imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
-        layer.add(imageNode);
+        worldLayer.add(imageNode);
         imageNode.moveToBottom();
 
         // Swap the undo stack and rebuild annotations from the frame's snapshot
@@ -1541,7 +1541,7 @@
         annotations.forEach(function (a) { a.konvaLayer.destroy(); });
         annotations = [];
         stagingLayer.destroyChildren(); stagingStrokes = [];
-        layer.batchDraw(); stagingLayer.batchDraw();
+        worldLayer.batchDraw(); stagingLayer.batchDraw();
         dropEl.classList.remove('hide');
         controls.classList.remove('show');
         toolbar.classList.remove('show');
@@ -2615,7 +2615,7 @@
       compareImgNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH, listening: false });
       compareGroup = new Konva.Group({ clipFunc: compareClip });
       compareGroup.add(compareImgNode);
-      layer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
+      worldLayer.add(compareGroup);   // inside the base layer: above v1, below staging + annotations
       compareGroup.moveToTop();
       compareMode = true;
       dividerImgX = imgW / 2;    // start at the image's horizontal middle
@@ -2623,7 +2623,7 @@
       compareBar.classList.add('show');
       compareName.textContent = name ? ('Before  ·  After — ' + name) : 'Before / After';
       syncCompareUI();
-      layer.batchDraw();
+      worldLayer.batchDraw();
     }
 
     function exitCompare() {
@@ -2632,7 +2632,7 @@
       if (compareGroup) { compareGroup.destroy(); compareGroup = null; compareImgNode = null; }
       compareDivider.classList.remove('show');
       compareBar.classList.remove('show');
-      layer.batchDraw();
+      worldLayer.batchDraw();
     }
 
     // Drag the divider handle — converts the pointer's screen X back into an image coordinate
@@ -2648,7 +2648,7 @@
         var scale = stage.scaleX();
         dividerImgX = Math.max(0, Math.min(imgW, (e.clientX - stage.x()) / scale));
         syncCompareUI();
-        layer.batchDraw();
+        worldLayer.batchDraw();
       });
       compareHandle.addEventListener('pointerup', function () { dragging = false; });
       compareHandle.addEventListener('pointercancel', function () { dragging = false; });
