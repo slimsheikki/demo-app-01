@@ -1222,28 +1222,40 @@
     // bottom zoom bar are horizontally centered, so they only constrain the
     // image vertically — reserve their height so the image stays fully visible
     // between them instead of slipping underneath.
-    function fitToScreen() {
-      if (!imageNode) return;
+    function fitAll() {
+      if (!frames.length) return;
       var sw = stage.width(), sh = stage.height();
       var gap = 14;
       var topInset = 0, bottomInset = 0;
-      if (toolbar.classList.contains('show')) {
-        topInset = toolbar.getBoundingClientRect().bottom + gap;
+      if (toolbar.classList.contains('show')) topInset = toolbar.getBoundingClientRect().bottom + gap;
+      if (controls.classList.contains('show')) bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
+
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      frames.forEach(function(f) {
+        var hasChrome = frames.length > 1;
+        minX = Math.min(minX, f.x || 0);
+        minY = Math.min(minY, (f.y || 0) - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0));
+        maxX = Math.max(maxX, (f.x || 0) + f.imgW);
+        maxY = Math.max(maxY, (f.y || 0) + f.imgH);
+      });
+      if (!isFinite(minX)) {
+        // Fallback: use imageNode if frames data incomplete
+        if (!imageNode) return;
+        minX = 0; minY = 0; maxX = imgW; maxY = imgH;
       }
-      if (controls.classList.contains('show')) {
-        bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
-      }
+      var worldW = maxX - minX, worldH = maxY - minY;
       var availH = Math.max(40, sh - topInset - bottomInset);
-      var scale = clamp(Math.min(sw / imgW, availH / imgH) * FIT_PADDING);
+      var scale = clamp(Math.min(sw / worldW, availH / worldH) * FIT_PADDING);
       stage.scale({ x: scale, y: scale });
       stage.position({
-        x: (sw - imgW * scale) / 2,
-        y: topInset + (availH - imgH * scale) / 2
+        x: (sw - worldW * scale) / 2 - minX * scale,
+        y: topInset + (availH - worldH * scale) / 2 - minY * scale
       });
       stage.batchDraw();
       updateZoomLabel();
       syncCompareUI();
     }
+    function fitToScreen() { fitAll(); }
 
     // ---- Load an image file ----
     function loadFile(file) {
@@ -1271,6 +1283,12 @@
         if (imageNode) { imageNode.destroy(); }
         imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
         worldLayer.add(imageNode);
+        // Update frame 0's imageNode reference in single-image mode
+        if (frames.length > 0) {
+          frames[0].imageNode = imageNode;
+          frames[0].imgW = imgW;
+          frames[0].imgH = imgH;
+        }
 
         dropEl.classList.add('hide');
         controls.classList.add('show');
@@ -1281,7 +1299,7 @@
         // Let layout settle, then size the stage and fit; show layers panel
         requestAnimationFrame(function () {
           resizeStage();
-          fitToScreen();
+          fitAll();
           renderLayersPanel();
           resetHistory();
           // When opening a shared link, rebuild its annotations on top of the loaded image
@@ -1289,7 +1307,7 @@
             restoreSnapshot(pendingSnapshot);
             pendingSnapshot = null;
             setTool('pan');
-            fitToScreen();
+            fitAll();
           }
         });
       };
@@ -2606,7 +2624,7 @@
     stage.on('dragend',   function () { stageEl.classList.remove('grabbing'); });
 
     // ---- Double-click / double-tap to fit ----
-    stage.on('dblclick dbltap', function () { if (currentTool === 'pan') fitToScreen(); });
+    stage.on('dblclick dbltap', function () { if (currentTool === 'pan') fitAll(); });
 
     // ---- Drag & drop on the whole window ----
     function hasFiles(e) {
@@ -2838,8 +2856,8 @@
     // ---- Control buttons ----
     document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
     document.getElementById('zoomOut').addEventListener('click', function () { zoomByStep(1 / ZOOM_STEP); });
-    document.getElementById('fitBtn').addEventListener('click', fitToScreen);
-    zoomLabel.addEventListener('click', fitToScreen);
+    document.getElementById('fitBtn').addEventListener('click', fitAll);
+    zoomLabel.addEventListener('click', fitAll);
 
     // ---- Round-trip: viewer uploads their new version (v2) ----
     var v2Input      = document.getElementById('v2Input');
