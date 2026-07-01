@@ -1387,7 +1387,7 @@
         results.forEach(function (res) {
           if (!res.ok) { failed++; return; }
           var pos = computeNewArtboardPosition(res.w, res.h);
-          var label = (res.file.name || ‘’).replace(/\.[^.]+$/, ‘’) || (‘Frame ‘ + (frames.length + 1));
+          var label = (res.file.name || '').replace(/\.[^.]+$/, '') || ('Frame ' + (frames.length + 1));
           frames.push({
             id: makeFrameId(), image: res.img, blob: res.file,
             imgW: res.w, imgH: res.h,
@@ -1400,7 +1400,7 @@
             liveAnnotations: []
           });
         });
-        if (failed) showError(‘Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.’);
+        if (failed) showError('Some files couldn’t be opened. Try JPG, PNG, WebP, GIF or AVIF.');
         if (frames.length === 0) return;
         if (wasEmpty) showChrome();
 
