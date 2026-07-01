@@ -189,7 +189,8 @@
   body.read-only #compareBtn,
   body.read-only #shareBtn,
   body.read-only #commitBar,
-  body.read-only #commentBox { display: none !important; }
+  body.read-only #commentBox,
+  body.read-only #mobileColorSwatch { display: none !important; }
 
   .cbtn {
     appearance: none;
@@ -791,6 +792,88 @@
     box-shadow: 0 1px 4px rgba(0,0,0,0.4);
     cursor: pointer;
   }
+
+  /* ---- Mobile-only bottom dock + bottom-sheet layout (screens <=760px) ----
+     Desktop is untouched: these rules either sit outside the media query
+     (and only force display:none) or are inside it, so they never apply above
+     the breakpoint. */
+  #mobileToolDock { display: none; }
+  #mobileSheetBackdrop { display: none; }
+
+  @media (max-width: 760px) {
+    #mobileToolDock.show {
+      display: flex;
+      position: fixed;
+      right: 16px;
+      bottom: max(20px, env(safe-area-inset-bottom, 20px));
+      flex-direction: column;
+      gap: 10px;
+      z-index: 25;
+    }
+    .mdock-btn {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.25);
+      background: rgba(22,22,28,0.85);
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      color: var(--txt);
+      position: relative;
+    }
+    #mobileLayersBtn svg { width: 20px; height: 20px; stroke: currentColor; stroke-width: 1.8; fill: none; }
+    #mobileLayersBadge {
+      display: none;
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      background: #fff;
+      color: #111;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+      padding: 0 3px;
+    }
+    #mobileLayersBadge.show { display: block; }
+
+    #mobileSheetBackdrop.show {
+      display: block;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 29;
+    }
+
+    #colorPicker, #layersPanel {
+      position: fixed;
+      left: 0;
+      right: 0;
+      top: auto;
+      bottom: 0;
+      width: 100%;
+      max-width: 100%;
+      max-height: 45vh;
+      border-radius: 18px 18px 0 0;
+      transform: translateY(100%);
+      transition: transform .25s ease;
+      z-index: 30;
+    }
+    #colorPicker.mobile-sheet-open, #layersPanel.mobile-sheet-open {
+      transform: translateY(0);
+    }
+    #colorPickerHeader, #layersPanelHeader { cursor: default; }
+    #colorPickerHeader:active, #layersPanelHeader:active { cursor: default; }
+  }
 </style>
 </head>
 <body>
@@ -935,6 +1018,18 @@
     </div>
   </div>
 
+  <!-- Mobile-only: dims/opens the color + layers sheets, tap outside to dismiss -->
+  <div id="mobileSheetBackdrop"></div>
+
+  <!-- Mobile-only: compact dock replacing the always-on floating panels -->
+  <div id="mobileToolDock">
+    <button class="mdock-btn" id="mobileColorSwatch" title="Color &amp; brush" aria-label="Open color and brush picker"></button>
+    <button class="mdock-btn" id="mobileLayersBtn" title="Layers" aria-label="Open layers panel">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="mobileLayersBadge">0</span>
+    </button>
+  </div>
+
   <!-- Error toast -->
   <div id="err"></div>
 
@@ -1059,6 +1154,27 @@
     var renderRecents = null; // assigned by color picker IIFE
     var layersPanelPositioned = false;
     var layersAttachedToColorPicker = false;
+
+    // ---- Mobile bottom-sheet layout (color picker + layers panel move off the
+    // image below this breakpoint; desktop floating/draggable panels are untouched) ----
+    var isMobileLayout = window.matchMedia('(max-width: 760px)').matches;
+    var mobileToolDock = document.getElementById('mobileToolDock');
+    var mobileSheetBackdrop = document.getElementById('mobileSheetBackdrop');
+    var colorPickerPanel = document.getElementById('colorPicker'); // top-level ref; the color-picker IIFE below also grabs its own local one
+
+    function closeMobileSheets() {
+      colorPickerPanel.classList.remove('mobile-sheet-open');
+      layersPanel.classList.remove('mobile-sheet-open');
+      mobileSheetBackdrop.classList.remove('show');
+    }
+    function toggleMobileSheet(el) {
+      var opening = !el.classList.contains('mobile-sheet-open');
+      closeMobileSheets();
+      if (opening) {
+        el.classList.add('mobile-sheet-open');
+        mobileSheetBackdrop.classList.add('show');
+      }
+    }
 
     // ---- Sharing state ----
     var sourceBlob = null;       // the original image File/Blob, kept for upload
@@ -1361,6 +1477,7 @@
       controls.classList.add('show');
       toolbar.classList.add('show');
       document.getElementById('colorPicker').style.display = 'flex';
+      mobileToolDock.classList.add('show');
       stageEl.classList.add('grabbable');
     }
 
@@ -1820,6 +1937,9 @@
     }
 
     window.addEventListener('resize', function () {
+      var wasMobileLayout = isMobileLayout;
+      isMobileLayout = window.matchMedia('(max-width: 760px)').matches;
+      if (wasMobileLayout !== isMobileLayout) closeMobileSheets();
       resizeStage();
       repositionPanels();
       syncCompareUI();
@@ -1914,6 +2034,7 @@
         DRAW_COLOR=hex;
         cpPreview.style.background=hex;
         cpHexInput.value=hex.toUpperCase();
+        document.getElementById('mobileColorSwatch').style.background=hex;
         document.querySelectorAll('.cp-recent').forEach(function(dot){
           dot.classList.toggle('active', dot.dataset.hex === hex.toLowerCase());
         });
@@ -2012,6 +2133,7 @@
         var drag=false,sx,sy,sl,st;
         hdr.addEventListener('pointerdown',function(e){
           if(e.button!==0)return;
+          if(isMobileLayout)return; // mobile: header taps don't drag, panel is a fixed bottom sheet
           drag=true;sx=e.clientX;sy=e.clientY;
           var rect=colorPickerEl.getBoundingClientRect();
           sl=rect.left;st=rect.top;
@@ -2222,7 +2344,11 @@
       if (!imageNode) return;
       if (!layersPanelPositioned) {
         layersPanelPositioned = true;
-        if (readOnly) {
+        if (isMobileLayout) {
+          // Mobile: positioning is pure CSS (fixed bottom sheet) — just mark it
+          // visible; actual open/close is the .mobile-sheet-open toggle from the dock.
+          layersPanel.classList.add('show');
+        } else if (readOnly) {
           // The color picker is hidden for viewers, so dock independently (top-right)
           layersAttachedToColorPicker = false;
           layersPanel.style.top = '16px';
@@ -2248,6 +2374,9 @@
       } else {
         layersPanel.classList.add('show');
       }
+      var mobileLayersBadge = document.getElementById('mobileLayersBadge');
+      mobileLayersBadge.textContent = annotations.length;
+      mobileLayersBadge.classList.toggle('show', annotations.length > 0);
       if (annotations.length === 0) {
         layersList.innerHTML = '<div class="layers-empty">Draw to add annotations</div>';
         return;
@@ -2572,6 +2701,7 @@
 
       header.addEventListener('pointerdown', function (e) {
         if (e.button !== 0) return;
+        if (isMobileLayout) return; // mobile: header taps don't drag, panel is a fixed bottom sheet
         // Detach from color picker on grab
         layersAttachedToColorPicker = false;
         // Convert current position to explicit left/top
@@ -2636,6 +2766,7 @@
 
     function repositionPanels() {
       if (!imageNode) return; // panels only exist once an image is loaded
+      if (isMobileLayout) return; // mobile panels are positioned by CSS only (fixed bottom sheet)
       var cp = document.getElementById('colorPicker');
       // The color picker stays right-anchored (responsive) until dragged; only manage it once it's left-anchored.
       if (cp.style.right === 'auto' && cp.style.left) clampIntoView(cp);
@@ -2966,6 +3097,15 @@
     document.getElementById('zoomOut').addEventListener('click', function () { zoomByStep(1 / ZOOM_STEP); });
     document.getElementById('fitBtn').addEventListener('click', fitToScreen);
     zoomLabel.addEventListener('click', fitToScreen);
+
+    // ---- Mobile dock: opens the color/brush and layers panels as bottom sheets ----
+    document.getElementById('mobileColorSwatch').addEventListener('click', function () {
+      toggleMobileSheet(colorPickerPanel);
+    });
+    document.getElementById('mobileLayersBtn').addEventListener('click', function () {
+      toggleMobileSheet(layersPanel);
+    });
+    mobileSheetBackdrop.addEventListener('click', closeMobileSheets);
 
     // ---- Round-trip: viewer uploads their new version (v2) ----
     var v2Input      = document.getElementById('v2Input');
