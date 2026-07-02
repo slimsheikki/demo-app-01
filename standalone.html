@@ -190,7 +190,8 @@
   body.read-only #shareBtn,
   body.read-only #commitBar,
   body.read-only #commentBox,
-  body.read-only #mobileColorSwatch { display: none !important; }
+  body.read-only #mobileColorBar,
+  body.read-only #mobileBrushBar { display: none !important; }
 
   .cbtn {
     appearance: none;
@@ -799,6 +800,8 @@
      the breakpoint. */
   #mobileToolDock { display: none; }
   #mobileSheetBackdrop { display: none; }
+  #mobileColorBar { display: none; }
+  #mobileBrushBar { display: none; }
 
   @media (max-width: 760px) {
     #mobileToolDock.show {
@@ -854,7 +857,11 @@
       z-index: 29;
     }
 
-    #colorPicker, #layersPanel {
+    /* The custom desktop color picker (SV square + hue bar + hex + brush) is
+       fully superseded on mobile by #mobileColorBar + #mobileBrushBar below. */
+    #colorPicker { display: none !important; }
+
+    #layersPanel {
       position: fixed;
       left: 0;
       right: 0;
@@ -868,11 +875,104 @@
       transition: transform .25s ease;
       z-index: 30;
     }
-    #colorPicker.mobile-sheet-open, #layersPanel.mobile-sheet-open {
+    #layersPanel.mobile-sheet-open {
       transform: translateY(0);
     }
-    #colorPickerHeader, #layersPanelHeader { cursor: default; }
-    #colorPickerHeader:active, #layersPanelHeader:active { cursor: default; }
+    #layersPanelHeader { cursor: default; }
+    #layersPanelHeader:active { cursor: default; }
+
+    /* ---- Vertical color slider, docked top-right, always visible ---- */
+    #mobileColorBar {
+      display: none;
+    }
+    #mobileColorBar.show {
+      display: block;
+      position: fixed;
+      top: max(16px, env(safe-area-inset-top, 16px));
+      right: 16px;
+      width: 30px;
+      height: min(400px, 45vh);
+      border-radius: 15px;
+      border: 2px solid rgba(255,255,255,0.25);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+      background: linear-gradient(to bottom,
+        #ffffff 0%, #808080 14%, #000000 28%,
+        #ff0000 28.01%, #ffff00 42%, #00ff00 56%,
+        #00ffff 70%, #0000ff 84%, #ff00ff 96%, #ff0000 100%);
+      z-index: 25;
+      touch-action: none;
+    }
+    #mobileColorBarThumb {
+      position: absolute;
+      left: 50%;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2.5px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.5), 0 1px 4px rgba(0,0,0,0.4);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      top: 0;
+    }
+
+    /* ---- Brush size, docked as a pill above the bottom controls bar ---- */
+    #mobileBrushBar {
+      display: none;
+    }
+    #mobileBrushBar.show {
+      display: flex;
+      position: fixed;
+      left: 50%;
+      bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      width: min(240px, 70vw);
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 20px;
+      background: rgba(22,22,28,0.85);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+      z-index: 25;
+    }
+    #mobileBrushNum {
+      font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+      font-size: 11px;
+      color: var(--txt-dim);
+      min-width: 16px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    #mobileBrushSlider {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: rgba(255,255,255,0.15);
+      outline: none;
+      cursor: pointer;
+    }
+    #mobileBrushSlider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      cursor: pointer;
+    }
+    #mobileBrushSlider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      border: none;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+      cursor: pointer;
+    }
   }
 </style>
 </head>
@@ -1018,16 +1118,26 @@
     </div>
   </div>
 
-  <!-- Mobile-only: dims/opens the color + layers sheets, tap outside to dismiss -->
+  <!-- Mobile-only: dims/opens the layers sheet, tap outside to dismiss -->
   <div id="mobileSheetBackdrop"></div>
 
-  <!-- Mobile-only: compact dock replacing the always-on floating panels -->
+  <!-- Mobile-only: compact dock for the layers sheet -->
   <div id="mobileToolDock">
-    <button class="mdock-btn" id="mobileColorSwatch" title="Color &amp; brush" aria-label="Open color and brush picker"></button>
     <button class="mdock-btn" id="mobileLayersBtn" title="Layers" aria-label="Open layers panel">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <span id="mobileLayersBadge">0</span>
     </button>
+  </div>
+
+  <!-- Mobile-only: always-on vertical color slider, docked top-right -->
+  <div id="mobileColorBar">
+    <div id="mobileColorBarThumb"></div>
+  </div>
+
+  <!-- Mobile-only: always-on brush size slider, docked above the bottom controls -->
+  <div id="mobileBrushBar">
+    <input type="range" id="mobileBrushSlider" min="1" max="20" value="4" step="1" aria-label="Brush size">
+    <span id="mobileBrushNum">4</span>
   </div>
 
   <!-- Error toast -->
@@ -1152,18 +1262,21 @@
     var recentColors = [];
     var MAX_RECENTS = 8;
     var renderRecents = null; // assigned by color picker IIFE
+    var syncColorPickerUI = null; // assigned by color picker IIFE; lets the mobile color bar drive the same update path
     var layersPanelPositioned = false;
     var layersAttachedToColorPicker = false;
 
-    // ---- Mobile bottom-sheet layout (color picker + layers panel move off the
-    // image below this breakpoint; desktop floating/draggable panels are untouched) ----
+    // ---- Mobile layout (layers panel moves off the image into a bottom sheet;
+    // the color/brush pickers become their own persistent controls, see below;
+    // desktop floating/draggable panels are untouched) ----
     var isMobileLayout = window.matchMedia('(max-width: 760px)').matches;
     var mobileToolDock = document.getElementById('mobileToolDock');
     var mobileSheetBackdrop = document.getElementById('mobileSheetBackdrop');
-    var colorPickerPanel = document.getElementById('colorPicker'); // top-level ref; the color-picker IIFE below also grabs its own local one
+    var mobileColorBar = document.getElementById('mobileColorBar');
+    var mobileColorBarThumb = document.getElementById('mobileColorBarThumb');
+    var mobileBrushBar = document.getElementById('mobileBrushBar');
 
     function closeMobileSheets() {
-      colorPickerPanel.classList.remove('mobile-sheet-open');
       layersPanel.classList.remove('mobile-sheet-open');
       mobileSheetBackdrop.classList.remove('show');
     }
@@ -1478,6 +1591,8 @@
       toolbar.classList.add('show');
       document.getElementById('colorPicker').style.display = 'flex';
       mobileToolDock.classList.add('show');
+      mobileColorBar.classList.add('show');
+      mobileBrushBar.classList.add('show');
       stageEl.classList.add('grabbable');
     }
 
@@ -2034,11 +2149,19 @@
         DRAW_COLOR=hex;
         cpPreview.style.background=hex;
         cpHexInput.value=hex.toUpperCase();
-        document.getElementById('mobileColorSwatch').style.background=hex;
         document.querySelectorAll('.cp-recent').forEach(function(dot){
           dot.classList.toggle('active', dot.dataset.hex === hex.toLowerCase());
         });
       }
+
+      // Exposed so the mobile color bar (a separate, simpler control) can drive
+      // this same picker's state/UI when the user picks a color there.
+      syncColorPickerUI = function(hex) {
+        cpSyncFromColor(hex);
+        cpDrawSV();
+        cpUpdateThumbs();
+        cpApply();
+      };
       function cpSyncFromColor(hex) {
         if(!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
         var rgb=cpHexToRgb(hex),hsv=cpRgbToHsv(rgb.r,rgb.g,rgb.b);
@@ -3098,14 +3221,73 @@
     document.getElementById('fitBtn').addEventListener('click', fitToScreen);
     zoomLabel.addEventListener('click', fitToScreen);
 
-    // ---- Mobile dock: opens the color/brush and layers panels as bottom sheets ----
-    document.getElementById('mobileColorSwatch').addEventListener('click', function () {
-      toggleMobileSheet(colorPickerPanel);
-    });
+    // ---- Mobile dock: opens the layers panel as a bottom sheet ----
     document.getElementById('mobileLayersBtn').addEventListener('click', function () {
       toggleMobileSheet(layersPanel);
     });
     mobileSheetBackdrop.addEventListener('click', closeMobileSheets);
+
+    // ---- Mobile: vertical color slider (drag up/down to pick), always visible ----
+    // Small standalone HSV/RGB/hex helpers — mirror the desktop color picker's
+    // internal math without touching its working, tested closure.
+    function mColorHsvToRgb(h, s, v) {
+      var i = Math.floor(h / 60) % 6;
+      var f = h / 60 - Math.floor(h / 60);
+      var p = v*(1-s), q = v*(1-f*s), t = v*(1-(1-f)*s);
+      var r,g,b;
+      if(i===0){r=v;g=t;b=p;}else if(i===1){r=q;g=v;b=p;}
+      else if(i===2){r=p;g=v;b=t;}else if(i===3){r=p;g=q;b=v;}
+      else if(i===4){r=t;g=p;b=v;}else{r=v;g=p;b=q;}
+      return { r: Math.round(r*255), g: Math.round(g*255), b: Math.round(b*255) };
+    }
+    function mColorRgbToHex(r, g, b) {
+      return '#'+[r,g,b].map(function(x){return x.toString(16).padStart(2,'0');}).join('');
+    }
+    (function () {
+      var GRAY_FRACTION = 0.28; // matches the CSS gradient's grayscale segment
+      function colorFromFraction(f) {
+        if (f <= GRAY_FRACTION) {
+          var g = Math.round(255 * (1 - f / GRAY_FRACTION));
+          return mColorRgbToHex(g, g, g);
+        }
+        var hue = ((f - GRAY_FRACTION) / (1 - GRAY_FRACTION)) * 360;
+        var rgb = mColorHsvToRgb(hue, 1, 1);
+        return mColorRgbToHex(rgb.r, rgb.g, rgb.b);
+      }
+      var dragging = false;
+      function pick(e) {
+        var r = mobileColorBar.getBoundingClientRect();
+        var f = Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+        mobileColorBarThumb.style.top = (f * r.height) + 'px';
+        var hex = colorFromFraction(f);
+        mobileColorBarThumb.style.background = hex;
+        if (typeof syncColorPickerUI === 'function') syncColorPickerUI(hex);
+      }
+      mobileColorBar.addEventListener('pointerdown', function (e) {
+        dragging = true;
+        mobileColorBar.setPointerCapture(e.pointerId);
+        pick(e);
+      });
+      mobileColorBar.addEventListener('pointermove', function (e) { if (dragging) pick(e); });
+      mobileColorBar.addEventListener('pointerup', function () { dragging = false; });
+      mobileColorBar.addEventListener('pointercancel', function () { dragging = false; });
+    })();
+
+    // ---- Mobile: brush size slider, always visible, mirrors the desktop slider ----
+    (function () {
+      var mobileBrushSlider = document.getElementById('mobileBrushSlider');
+      var mobileBrushNum = document.getElementById('mobileBrushNum');
+      mobileBrushSlider.value = DRAW_WIDTH;
+      mobileBrushNum.textContent = DRAW_WIDTH;
+      mobileBrushSlider.addEventListener('input', function () {
+        DRAW_WIDTH = parseInt(this.value, 10);
+        mobileBrushNum.textContent = DRAW_WIDTH;
+        var cpBrushSlider = document.getElementById('cpBrushSlider');
+        var cpBrushNum = document.getElementById('cpBrushNum');
+        cpBrushSlider.value = DRAW_WIDTH;
+        cpBrushNum.textContent = DRAW_WIDTH;
+      });
+    })();
 
     // ---- Round-trip: viewer uploads their new version (v2) ----
     var v2Input      = document.getElementById('v2Input');
