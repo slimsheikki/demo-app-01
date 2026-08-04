@@ -4,7 +4,7 @@
 A single-file browser photo annotation tool. No build step. Deployed on GitHub Pages from `main`.
 - **Live app:** https://slimsheikki.github.io/demo-app-01/standalone.html
 - **Repo:** https://github.com/slimsheikki/demo-app-01
-- **Main file:** `standalone.html` (~2600 lines, Konva.js 9.3.16 inlined, zero dependencies)
+- **Main file:** `standalone.html` (~4100 lines, Konva.js 9.3.16 inlined, zero dependencies)
 - **Backend:** Supabase (direct browser fetch, no SDK)
 - **Dev branch:** `claude/browser-annotation-tool-plan-5g309m` → fast-forwarded to `main` after each phase
 
@@ -15,14 +15,20 @@ A single-file browser photo annotation tool. No build step. Deployed on GitHub P
 | Zoom / pan (trackpad + mouse) | ✅ |
 | Freehand draw tool | ✅ |
 | Commit stroke → named annotation with comment | ✅ |
-| Layers panel (eye toggle, delete, drag-to-reorder) | ✅ |
+| Layers panel (eye toggle, rename, delete) | ✅ |
 | Undo / redo (per-frame) | ✅ |
 | Color picker | ✅ |
 | Brush width slider | ✅ |
 | Draggable annotation groups | ✅ |
 | Before/after compare slider (v1 vs v2) | ✅ |
 | Share link (Supabase, read-only viewer) | ✅ |
-| Multi-image project (filmstrip, per-frame everything) | ✅ |
+| Multi-image project (artboard canvas, per-frame everything) | ✅ |
+| Artboard canvas: drag, edge-snap, delete a frame | ✅ |
+| Hold-Z zoom tool (click to step, drag to scrub, Alt inverts) | ✅ |
+| Light / dark theme with a top-right switch | ✅ |
+| Idle-fade: chrome recedes when you stop interacting | ✅ |
+| Keyboard shortcut overlay (`?`) | ✅ |
+| Share expiry surfaced (countdown + expired state) | ✅ |
 
 ## Architecture — key decisions
 
@@ -41,7 +47,11 @@ Legacy single-image links store an object (not array) — dual-read in `bootstra
 
 **Read-only viewer:** `body.read-only` CSS class hides `#toolbar #colorPicker #newBtn #compareBtn #shareBtn #commitBar #commentBox`. `readOnly` flag gates `setTool` (forces pan), `renderLayersPanel` (skips delete/name-edit), drag handlers, drop/picker.
 
-**Filmstrip:** shown only when `frames.length > 1`. Hidden in read-only for add/delete controls only (strip itself stays visible). Thumbnails: author-side = canvas dataURL; viewer-side = `supaPublicUrl(f.imagePath)`.
+**Artboard canvas:** replaced the filmstrip in `cfdf0bf`. Artboard chrome (label bar, outline, delete control) exists only when `frames.length > 1`; it is mounted retroactively on frame 0 when a second image arrives and unmounted when dropping back to one. The label bar doubles as the drag handle and carries the delete control (authors only).
+
+**Theming:** `data-theme` on `<html>`, resolved by an inline `<head>` script before the stylesheet so the first paint is correct. Follows `prefers-color-scheme` until the user picks explicitly; only an explicit click writes `localStorage`, so persisting on load can't pin the theme. Colour lives in ~75 role-named tokens; the Konva-drawn artboard chrome reads the same tokens via `getComputedStyle` in `applyThemeToCanvas()`.
+
+**Two constants worth knowing:** `--rail-w` (220px, the shared width of the colour picker + layers panel rail — CLAUDE.md forbids changing it) and `--util-h` (40px, the space the top-right utility bar reserves; everything anchored to that corner offsets by it).
 
 ## Supabase config
 
@@ -77,6 +87,12 @@ var MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 - Do not change layers box width (220px)
 - Only check deploy status when explicitly asked
 - Anon key is intentionally public; never use service_role key in client/repo
+
+## Known gaps
+
+- The `760px` mobile breakpoint is still duplicated in CSS and twice in JS (`isMobileLayout`).
+- Deleting a frame is not undoable (it asks for confirmation when there are annotations to lose).
+- No per-frame indicator of which frames have a v2; `body.has-v2` is a single global class driven by the active frame.
 
 ## Next feature candidate (discussed, not started)
 
