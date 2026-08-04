@@ -115,17 +115,18 @@
     --btn-txt:           #1c1c1e;
 
     /* ---------- Canvas-drawn artboard chrome (Konva, read via getComputedStyle) ---------- */
-    --artboard-label-bg:  rgba(255, 255, 255, 0.07);
+    --artboard-label-bg:  rgba(255, 255, 255, 0.10);
     --artboard-label-txt: rgba(255, 255, 255, 0.60);
     --artboard-outline:   rgba(255, 255, 255, 0.12);
     --artboard-active:    rgba(255, 255, 255, 0.45);
+    --artboard-glass:     rgba(48, 48, 58, 0.88);
 
     /* ---------- Blur ----------
        One recipe for every panel, and no saturate(). Saturation on a
        translucent panel shifts the apparent colour of the photograph beneath
        and beside it, which a colour-review tool must not do. */
     --blur-sm:           blur(10px);
-    --blur-panel:        blur(24px);
+    --blur-panel:        blur(34px);
 
     /* ---------- Geometry ---------- */
     --rail-w:            220px;
@@ -140,10 +141,20 @@
     --focus-ring:        rgba(255, 255, 255, 0.65);
     --guide:             #4a9df8;
     --approve:           #2fae5e;
-    /* Liquid-glass sheen: a bright specular top edge and a faint inner floor.
-       Deliberately no saturate() in the blur — colour accuracy beats sparkle. */
-    --liquid-hi:         rgba(255, 255, 255, 0.14);
-    --liquid-lo:         rgba(0, 0, 0, 0.22);
+    /* ---------- Liquid glass ----------
+       Directional: light enters top-left and shades toward bottom-right, with
+       three lit edges and a dark under-edge. That asymmetry is what makes a
+       panel read as a solid slab rather than a translucent rectangle.
+       Deliberately no saturate() in the blur — a panel that shifts the colour
+       of the photo behind it has no place in a review tool. */
+    --glass-grad: linear-gradient(140deg,
+                    rgba(58, 58, 69, 0.90) 0%,
+                    rgba(32, 32, 40, 0.78) 46%,
+                    rgba(48, 48, 58, 0.86) 100%);
+    --liquid-hi:      rgba(255, 255, 255, 0.34);   /* top specular */
+    --liquid-side-l:  rgba(255, 255, 255, 0.20);
+    --liquid-side-r:  rgba(255, 255, 255, 0.10);
+    --liquid-lo:      rgba(0, 0, 0, 0.38);         /* under-edge */
 
     /* ---------- Type scale ---------- */
     --fs-eyebrow:        10.5px;
@@ -245,18 +256,25 @@
     --btn-bg:            #1c1c1e;
     --btn-txt:           #fafafa;
 
-    --artboard-label-bg:  rgba(0, 0, 0, 0.05);
+    --artboard-label-bg:  rgba(255, 255, 255, 0.55);
     --artboard-label-txt: rgba(0, 0, 0, 0.55);
     --artboard-outline:   rgba(0, 0, 0, 0.14);
     --artboard-active:    rgba(0, 0, 0, 0.42);
+    --artboard-glass:     rgba(255, 255, 255, 0.92);
 
     --knob-bg:           #ffffff;
     --knob-icon:         #1c1c1e;
     --focus-ring:        rgba(0, 0, 0, 0.55);
     --guide:             #1f7ae0;
     --approve:           #1d8747;
-    --liquid-hi:         rgba(255, 255, 255, 0.90);
-    --liquid-lo:         rgba(0, 0, 0, 0.06);
+    --glass-grad: linear-gradient(140deg,
+                    rgba(255, 255, 255, 0.94) 0%,
+                    rgba(255, 255, 255, 0.80) 46%,
+                    rgba(255, 255, 255, 0.90) 100%);
+    --liquid-hi:      rgba(255, 255, 255, 1);
+    --liquid-side-l:  rgba(255, 255, 255, 0.72);
+    --liquid-side-r:  rgba(255, 255, 255, 0.40);
+    --liquid-lo:      rgba(0, 0, 0, 0.10);
   }
 
   /* Without backdrop-filter the translucent panels are barely visible — and a
@@ -293,7 +311,7 @@
     overflow: hidden;
     background: var(--ground);
     color: var(--txt);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
   }
@@ -430,7 +448,7 @@
 
   .card h1 {
     font-size: 19px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.01em;
   }
   .card p {
@@ -446,7 +464,7 @@
     border: none;
     cursor: pointer;
     font-size: var(--fs-md);
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.01em;
     color: var(--btn-txt);
     padding: 12px 30px;
@@ -611,7 +629,7 @@
     transform: translateY(-50%);
     font-size: 10px;
     letter-spacing: 0.08em;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--cmp-label-txt);
     background: var(--cmp-label-bg);
     padding: 3px 7px;
@@ -1130,15 +1148,20 @@
      per-panel rules so it wins the box-shadow. */
   #toolbar, #controls, #colorPicker, #layersPanel, #commentBox,
   #compareBar, #themeToggle, #shortcutsCard, .cmp-grip, .card {
+    background: var(--glass-grad);
     box-shadow:
-      0 12px 40px var(--sh-4),
-      inset 0 1px 0 var(--liquid-hi),
-      inset 0 -1px 0 var(--liquid-lo);
+      0 14px 44px var(--sh-4),
+      0 2px 8px var(--sh-2),
+      inset 0 1.4px 0 var(--liquid-hi),
+      inset 1.4px 0 0 var(--liquid-side-l),
+      inset -1.4px 0 0 var(--liquid-side-r),
+      inset 0 -1.4px 0 var(--liquid-lo);
   }
   .commit-btn {
     box-shadow:
-      0 6px 20px var(--sh-4),
-      inset 0 1px 0 var(--liquid-hi);
+      0 8px 22px var(--sh-4),
+      inset 0 1.4px 0 var(--liquid-hi),
+      inset 0 -1.4px 0 var(--liquid-lo);
   }
 
   /* ---- Keyboard shortcut overlay ---- */
@@ -1661,7 +1684,9 @@
     var ZOOM_STEP = 1.2;       // per wheel notch / button press
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
     var ARTBOARD_GAP          = 60;   // canvas-px gap between artboards in grid + snap
-    var ARTBOARD_LABEL_HEIGHT = 28;   // canvas-px label bar above each artboard
+    var ARTBOARD_LABEL_HEIGHT = 40;   // canvas-px label bar above each artboard
+    var ARTBOARD_FRAME_PAD    = 16;   // canvas-px glass mat around the image
+    var ARTBOARD_RADIUS       = 18;   // canvas-px corner radius of the glass frame
     var SNAP_THRESHOLD        = 30;   // canvas-px: how close edge must be to trigger snap
     var GRID_COLS             = 4;    // max artboards per row before wrapping
 
@@ -1952,6 +1977,9 @@
         }
         if (f.labelText) f.labelText.fill(labelTxt);
         if (f.outlineRect) f.outlineRect.stroke(outline);
+        if (f.frameGlass) f.frameGlass.fill(themeToken('--artboard-glass'));
+        if (f.frameHi) f.frameHi.stroke(themeToken('--liquid-hi'));
+        if (f.frameLo) f.frameLo.stroke(themeToken('--liquid-lo'));
         [f.deleteIcon, f.hideIcon, f.approveIcon].forEach(function (icon) {
           if (!icon) return;
           icon.find('Line, Path, Circle').forEach(function (sh) {
@@ -2064,13 +2092,15 @@
       var topInset = ins.top, bottomInset = ins.bottom;
 
       var hasChrome = frames.length > 1;
+      var pad = hasChrome ? ARTBOARD_FRAME_PAD : 0;
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       frames.forEach(function(f) {
         var fx = f.x || 0, fy = f.y || 0;
-        minX = Math.min(minX, fx);
+        // the glass mat extends past the image on all four sides
+        minX = Math.min(minX, fx - pad);
         minY = Math.min(minY, fy - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0));
-        maxX = Math.max(maxX, fx + f.imgW);
-        maxY = Math.max(maxY, fy + f.imgH);
+        maxX = Math.max(maxX, fx + f.imgW + pad);
+        maxY = Math.max(maxY, fy + f.imgH + pad);
       });
       var worldW = maxX - minX, worldH = maxY - minY;
       var availH = Math.max(40, sh - topInset - bottomInset);
@@ -2446,22 +2476,68 @@
       var ag = new Konva.Group({ x: frame.x || 0, y: frame.y || 0 });
       frame.artboardGroup = ag;
 
+      // ---- Glass frame ----
+      // A mat that wraps the label bar and the image as one slab. Canvas can't do
+      // backdrop-filter, but this sits over the flat surround rather than over a
+      // photo, so a translucent fill plus specular edges is visually equivalent
+      // to real blurred glass — and matches the DOM panels' recipe.
+      var FP = ARTBOARD_FRAME_PAD;
+      var frameW = frame.imgW + FP * 2;
+      var frameH = frame.imgH + ARTBOARD_LABEL_HEIGHT + FP;
+      var glass = new Konva.Rect({
+        name: 'frameGlass',
+        x: -FP, y: -ARTBOARD_LABEL_HEIGHT,
+        width: frameW, height: frameH,
+        cornerRadius: ARTBOARD_RADIUS,
+        fill: themeToken('--artboard-glass'),
+        shadowColor: 'rgba(0,0,0,1)',
+        shadowOpacity: 0.20,
+        shadowBlur: 14,
+        shadowOffsetY: 5,
+        listening: false
+      });
+      frame.frameGlass = glass;
+      ag.add(glass);
+
+      // Specular top edge + dark under-edge: the same directional lighting the
+      // DOM panels use, drawn as two hairlines.
+      var hiLine = new Konva.Line({
+        name: 'frameHi',
+        points: [-FP + ARTBOARD_RADIUS, -ARTBOARD_LABEL_HEIGHT + 0.75,
+                 -FP + frameW - ARTBOARD_RADIUS, -ARTBOARD_LABEL_HEIGHT + 0.75],
+        stroke: themeToken('--liquid-hi'), strokeWidth: 1.5, listening: false
+      });
+      var loLine = new Konva.Line({
+        name: 'frameLo',
+        points: [-FP + ARTBOARD_RADIUS, frame.imgH + FP - 0.75,
+                 -FP + frameW - ARTBOARD_RADIUS, frame.imgH + FP - 0.75],
+        stroke: themeToken('--liquid-lo'), strokeWidth: 1.5, listening: false
+      });
+      frame.frameHi = hiLine; frame.frameLo = loLine;
+      ag.add(hiLine); ag.add(loLine);
+
+      // The label bar itself — a lighter band across the top of the slab.
       var lRect = new Konva.Rect({
-        x: 0, y: -ARTBOARD_LABEL_HEIGHT,
-        width: frame.imgW, height: ARTBOARD_LABEL_HEIGHT,
-        fill: themeToken('--artboard-label-bg'), cornerRadius: [4, 4, 0, 0]
+        name: 'frameLabel',
+        x: -FP, y: -ARTBOARD_LABEL_HEIGHT,
+        width: frameW, height: ARTBOARD_LABEL_HEIGHT,
+        fill: themeToken('--artboard-label-bg'),
+        cornerRadius: [ARTBOARD_RADIUS, ARTBOARD_RADIUS, 0, 0]
       });
       frame.labelRect = lRect;
       ag.add(lRect);
 
       // Reserve room for the right-side controls so the name never runs into
       // them; overlong names ellipsize.
-      var controlsW = readOnly ? 8 : 3 * 23 + 6;
+      var PADX = 14, BTN = 22, BGAP = 12;
+      var controlsW = readOnly ? PADX : 3 * BTN + 2 * BGAP + PADX + 4;
       var lText = new Konva.Text({
-        x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
+        x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 13) / 2,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
-        fontSize: 12, fill: themeToken('--artboard-label-txt'), listening: false,
-        width: Math.max(20, frame.imgW - 8 - controlsW), wrap: 'none', ellipsis: true
+        fontSize: 13, fontStyle: 'bold',
+        fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+        fill: themeToken('--artboard-label-txt'), listening: false,
+        width: Math.max(20, frameW - PADX - controlsW), wrap: 'none', ellipsis: true
       });
       frame.labelText = lText;
       ag.add(lText);
@@ -2469,13 +2545,15 @@
       // ---- Label-bar controls (authors only): approve, hide, delete ----
       // Small canvas-drawn icon buttons on the right of the bar, plus a green
       // approved badge on the left. A viewer gets the badge but no buttons.
-      var BTN = 18, BPAD = (ARTBOARD_LABEL_HEIGHT - BTN) / 2;
+      var BPAD = (ARTBOARD_LABEL_HEIGHT - BTN) / 2;
       function labelIconButton(name, slot, onClick) {
+        // slot 0 is the rightmost; step by button + gap, inset by the bar padding
         var g = new Konva.Group({
           name: name,
-          x: frame.imgW - (BTN + BPAD) * (slot + 1), y: -ARTBOARD_LABEL_HEIGHT + BPAD
+          x: -FP + frameW - PADX - BTN - slot * (BTN + BGAP),
+          y: -ARTBOARD_LABEL_HEIGHT + BPAD
         });
-        g.add(new Konva.Rect({ width: BTN, height: BTN, cornerRadius: 4, fill: 'rgba(0,0,0,0.001)' }));
+        g.add(new Konva.Rect({ width: BTN, height: BTN, cornerRadius: 6, fill: 'rgba(0,0,0,0.001)' }));
         g.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
         g.on('mouseleave', function () { stage.container().style.cursor = ''; });
         g.on('click tap', function (e) { e.cancelBubble = true; onClick(); });
@@ -2489,7 +2567,7 @@
       // Approved badge, left of the name (shown whenever the frame is approved,
       // for authors and viewers alike).
       var badge = new Konva.Group({
-        name: 'approveBadge', x: 8, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 14) / 2,
+        name: 'approveBadge', x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 14) / 2,
         listening: false, visible: !!frame.approved
       });
       badge.add(new Konva.Circle({ x: 7, y: 7, radius: 7, fill: themeToken('--approve') }));
@@ -2497,7 +2575,7 @@
         stroke: '#fff', strokeWidth: 1.8, lineCap: 'round', lineJoin: 'round' }));
       frame.approveBadge = badge;
       ag.add(badge);
-      lText.x(frame.approved ? 30 : 8);
+      lText.x(-FP + PADX + (frame.approved ? 22 : 0));
 
       if (!readOnly) {
         var stroke = themeToken('--artboard-label-txt');
@@ -2514,9 +2592,9 @@
                 (count === 1 ? ' annotation?' : ' annotations?'))) return;
           removeFrame(idx);
         });
-        var c = BTN / 2, sx = 4.5;
-        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
-        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        var c = BTN / 2, sx = 5.4;
+        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.8, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.8, lineCap: 'round' }));
         frame.deleteIcon = del;
 
         // Eye — hide from the canvas and from any share (slot 1)
@@ -2524,10 +2602,10 @@
           setFrameHidden(frame, !frame.hidden);
         });
         eye.add(new Konva.Path({
-          data: 'M2 9 C5 4.2 13 4.2 16 9 C13 13.8 5 13.8 2 9 Z',
-          stroke: stroke, strokeWidth: 1.4
+          data: 'M2.4 11 C6 5.2 16 5.2 19.6 11 C16 16.8 6 16.8 2.4 11 Z',
+          stroke: stroke, strokeWidth: 1.5
         }));
-        eye.add(new Konva.Circle({ x: 9, y: 9, radius: 2.1, stroke: stroke, strokeWidth: 1.4 }));
+        eye.add(new Konva.Circle({ x: 11, y: 11, radius: 2.5, stroke: stroke, strokeWidth: 1.5 }));
         frame.hideIcon = eye;
         eye.opacity(frame.hidden ? 0.45 : 1);
 
@@ -2535,8 +2613,8 @@
         var ok = labelIconButton('frameApprove', 2, function () {
           setFrameApproved(frame, !frame.approved);
         });
-        ok.add(new Konva.Line({ points: [4.5, 9.5, 7.8, 12.6, 13.5, 5.6],
-          stroke: stroke, strokeWidth: 1.7, lineCap: 'round', lineJoin: 'round' }));
+        ok.add(new Konva.Line({ points: [5.4, 11.6, 9.4, 15.4, 16.4, 6.8],
+          stroke: stroke, strokeWidth: 1.9, lineCap: 'round', lineJoin: 'round' }));
         frame.approveIcon = ok;
       }
       if (frame.hidden) ag.opacity(0.5);
@@ -2593,6 +2671,9 @@
       frame.hideIcon = null;
       frame.approveIcon = null;
       frame.approveBadge = null;
+      frame.frameGlass = null;
+      frame.frameHi = null;
+      frame.frameLo = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -4238,14 +4319,19 @@
       var ins = chromeInsets(true);
       var gap = 24;
       var hasChrome = frames.length > 1;
+      var pad = hasChrome ? ARTBOARD_FRAME_PAD : 0;
+      // Frame the whole slab — mat and label bar included — or the glass edges
+      // spill past the viewport that the insets just carved out.
+      var left = frame.x - pad;
       var top = frame.y - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
-      var h = frame.imgH + (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
+      var w = frame.imgW + pad * 2;
+      var h = frame.imgH + pad + (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
       var availW = Math.max(40, stage.width() - ins.right - gap * 2);
       var availH = Math.max(40, stage.height() - ins.top - ins.bottom - gap * 2);
-      var k = clamp(Math.min(availW / frame.imgW, availH / h));
+      var k = clamp(Math.min(availW / w, availH / h));
       return {
         k: k,
-        x: gap + (availW - frame.imgW * k) / 2 - frame.x * k,
+        x: gap + (availW - w * k) / 2 - left * k,
         y: ins.top + gap + (availH - h * k) / 2 - top * k
       };
     }
