@@ -29,6 +29,12 @@ A single-file browser photo annotation tool. No build step. Deployed on GitHub P
 | Idle-fade: chrome recedes when you stop interacting | ✅ |
 | Keyboard shortcut overlay (`?`) | ✅ |
 | Share expiry surfaced (countdown + expired state) | ✅ |
+| Selection tool (V): marquee + group move | ✅ |
+| Alignment guides while dragging artboards | ✅ |
+| Per-artboard hide (eye, excluded from share) + approve (A, shared) | ✅ |
+| Artboard rename (double-click the label) | ✅ |
+| F focus/return animation, Q/E brush size, Esc cancels drawing | ✅ |
+| Trackpad: two-finger pan, pinch zoom | ✅ |
 
 ## Architecture — key decisions
 
