@@ -1838,6 +1838,9 @@
         }
         if (f.labelText) f.labelText.fill(labelTxt);
         if (f.outlineRect) f.outlineRect.stroke(outline);
+        if (f.deleteIcon) {
+          f.deleteIcon.find('Line').forEach(function (l) { l.stroke(labelTxt); });
+        }
       });
       if (typeof worldLayer !== 'undefined' && worldLayer) worldLayer.batchDraw();
     }
@@ -2087,7 +2090,7 @@
             history: [], histIndex: -1,
             thumb: makeThumb(res.img, res.w, res.h),
             x: pos.x, y: pos.y, label: label,
-            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
           });
         });
@@ -2161,6 +2164,11 @@
         }
         activeFrameIndex = i;
         if (imageNode) { imageNode.destroy(); imageNode = null; }
+        // The target may already own a node parented straight to worldLayer —
+        // unmountArtboard() re-parents one there when a project drops to a single
+        // frame. Destroying only the global imageNode (which points at the frame
+        // we just left) would strand it and leave two images stacked on the canvas.
+        if (target.imageNode) { target.imageNode.destroy(); target.imageNode = null; }
         imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
         imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
         target.imageNode = imageNode;
@@ -2269,6 +2277,41 @@
       frame.labelText = lText;
       ag.add(lText);
 
+      // Delete control on the label bar. Authors only — a viewer has nothing to
+      // delete. Until now removeFrame() had no caller at all, so a mis-dropped
+      // photo could only be cleared by reloading and losing the whole session.
+      if (!readOnly) {
+        var D = 18, c = D / 2, s = 4.5;
+        var pad = (ARTBOARD_LABEL_HEIGHT - D) / 2;
+        var del = new Konva.Group({
+          name: 'frameDelete',
+          x: frame.imgW - D - pad, y: -ARTBOARD_LABEL_HEIGHT + pad
+        });
+        // transparent rect gives the two thin strokes a usable hit area
+        del.add(new Konva.Rect({ width: D, height: D, cornerRadius: 4, fill: 'rgba(0,0,0,0.001)' }));
+        var stroke = themeToken('--artboard-label-txt');
+        del.add(new Konva.Line({ points: [c - s, c - s, c + s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + s, c - s, c - s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        del.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
+        del.on('mouseleave', function () { stage.container().style.cursor = ''; });
+        del.on('click tap', function (e) {
+          e.cancelBubble = true;   // don't also activate/drag the artboard
+          var idx = frames.indexOf(frame);
+          if (idx < 0) return;
+          // Removing a frame drops its annotations and isn't undoable, so ask
+          // first — but only when there is actually something to lose.
+          var count = (frame.liveAnnotations && frame.liveAnnotations.length) ||
+                      (frame.snapshot && frame.snapshot.annotations ? frame.snapshot.annotations.length : 0);
+          var name = frame.label || ('Frame ' + (idx + 1));
+          if (count && !window.confirm(
+                'Delete "' + name + '" and its ' + count +
+                (count === 1 ? ' annotation?' : ' annotations?'))) return;
+          removeFrame(idx);
+        });
+        frame.deleteIcon = del;
+        ag.add(del);
+      }
+
       // Use existing imageNode if already created, otherwise create it
       if (frame.imageNode) {
         frame.imageNode.remove();
@@ -2317,6 +2360,7 @@
       frame.labelRect = null;
       frame.labelText = null;
       frame.outlineRect = null;
+      frame.deleteIcon = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -2333,10 +2377,12 @@
     }
 
     function rebuildAnnotationsInArtboard(frame) {
-      // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount)
+      // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount).
+      // Scoped by name: the artboard's own delete control is also a Group, and a
+      // blanket "destroy every Group child" would take it out too.
       if (frame.artboardGroup) {
         frame.artboardGroup.getChildren().forEach(function(child) {
-          if (child instanceof Konva.Group) child.destroy();
+          if (child instanceof Konva.Group && child.name() !== 'frameDelete') child.destroy();
         });
       }
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -4012,7 +4058,7 @@
               x: (typeof el.x === 'number') ? el.x : null,
               y: (typeof el.y === 'number') ? el.y : null,
               label: el.label || null,
-              artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+              artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
               liveAnnotations: []
             };
           });
@@ -4024,7 +4070,7 @@
             imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
             snapshot: doc, history: [], histIndex: -1, thumb: null,
             x: 0, y: 0, label: null,
-            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
           }];
         }
