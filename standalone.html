@@ -25,7 +25,7 @@
     /* Flat and fully desaturated: a gradient or a colour cast in the surround
        shifts how you judge tone and colour in the photograph sitting on it. */
     --ground:            #2b2b2b;
-    --panel-bg:          rgba(22, 22, 28, 0.85);
+    --panel-bg:          rgba(24, 24, 30, 0.66);
     --glass-bg:          rgba(255, 255, 255, 0.06);
     --glass-bg-hover:    rgba(255, 255, 255, 0.10);
 
@@ -124,8 +124,8 @@
        One recipe for every panel, and no saturate(). Saturation on a
        translucent panel shifts the apparent colour of the photograph beneath
        and beside it, which a colour-review tool must not do. */
-    --blur-sm:           blur(8px);
-    --blur-panel:        blur(12px);
+    --blur-sm:           blur(10px);
+    --blur-panel:        blur(24px);
 
     /* ---------- Geometry ---------- */
     --rail-w:            220px;
@@ -140,6 +140,10 @@
     --focus-ring:        rgba(255, 255, 255, 0.65);
     --guide:             #4a9df8;
     --approve:           #2fae5e;
+    /* Liquid-glass sheen: a bright specular top edge and a faint inner floor.
+       Deliberately no saturate() in the blur — colour accuracy beats sparkle. */
+    --liquid-hi:         rgba(255, 255, 255, 0.14);
+    --liquid-lo:         rgba(0, 0, 0, 0.22);
 
     /* ---------- Type scale ---------- */
     --fs-eyebrow:        10.5px;
@@ -164,7 +168,7 @@
     color-scheme: light;
 
     --ground:            #e9e9e9;
-    --panel-bg:          rgba(252, 252, 253, 0.88);
+    --panel-bg:          rgba(252, 252, 253, 0.60);
     --glass-bg:          rgba(255, 255, 255, 0.66);
     --glass-bg-hover:    rgba(0, 0, 0, 0.06);
 
@@ -251,6 +255,8 @@
     --focus-ring:        rgba(0, 0, 0, 0.55);
     --guide:             #1f7ae0;
     --approve:           #1d8747;
+    --liquid-hi:         rgba(255, 255, 255, 0.90);
+    --liquid-lo:         rgba(0, 0, 0, 0.06);
   }
 
   /* Without backdrop-filter the translucent panels are barely visible — and a
@@ -1117,6 +1123,24 @@
     cursor: pointer;
   }
 
+  /* ---- Liquid glass sheen ----
+     One shared treatment for every floating surface: deep blur (from
+     --blur-panel), higher translucency, a specular top edge and a faint inner
+     floor, so panels read as lensed glass over the canvas. Placed after the
+     per-panel rules so it wins the box-shadow. */
+  #toolbar, #controls, #colorPicker, #layersPanel, #commentBox,
+  #compareBar, #themeToggle, #shortcutsCard, .cmp-grip, .card {
+    box-shadow:
+      0 12px 40px var(--sh-4),
+      inset 0 1px 0 var(--liquid-hi),
+      inset 0 -1px 0 var(--liquid-lo);
+  }
+  .commit-btn {
+    box-shadow:
+      0 6px 20px var(--sh-4),
+      inset 0 1px 0 var(--liquid-hi);
+  }
+
   /* ---- Keyboard shortcut overlay ---- */
   #shortcuts {
     position: fixed;
@@ -1563,12 +1587,19 @@
   <div id="shortcuts" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
     <div id="shortcutsCard">
       <h2>Keyboard</h2>
+      <div class="sc-row"><span>Selection tool — marquee, move together</span><kbd>V</kbd></div>
       <div class="sc-row"><span>Hold to pan</span><kbd>Space</kbd></div>
       <div class="sc-row"><span>Pan</span><kbd>Middle-drag</kbd></div>
       <div class="sc-row"><span>Zoom tool — click, or drag to scrub</span><kbd>Z</kbd></div>
       <div class="sc-row"><span>Zoom out instead</span><kbd>Z + Alt</kbd></div>
-      <div class="sc-row"><span>Zoom to pointer</span><kbd>Scroll</kbd></div>
+      <div class="sc-row"><span>Zoom to pointer</span><kbd>Pinch</kbd></div>
+      <div class="sc-row"><span>Pan canvas</span><kbd>Two-finger scroll</kbd></div>
       <div class="sc-row"><span>Fit to screen</span><kbd>Double-click</kbd></div>
+      <div class="sc-row"><span>Focus artboard / return</span><kbd>F</kbd></div>
+      <div class="sc-row"><span>Approve artboard</span><kbd>A</kbd></div>
+      <div class="sc-row"><span>Brush smaller / bigger</span><kbd>Q / E</kbd></div>
+      <div class="sc-row"><span>Cancel drawing or selection</span><kbd>Esc</kbd></div>
+      <div class="sc-row"><span>Rename artboard</span><kbd>Double-click name</kbd></div>
       <div class="sc-row"><span>Undo</span><kbd>Ctrl / Cmd + Z</kbd></div>
       <div class="sc-row"><span>Redo</span><kbd>Ctrl / Cmd + Shift + Z</kbd></div>
       <div class="sc-row"><span>Confirm comment</span><kbd>Ctrl / Cmd + Enter</kbd></div>
@@ -2375,7 +2406,10 @@
     function setFrameApproved(frame, approved) {
       frame.approved = !!approved;
       if (frame.approveBadge) frame.approveBadge.visible(frame.approved);
-      if (frame.labelText) frame.labelText.x(frame.approved ? 30 : 8);
+      if (frame.labelText) {
+        frame.labelText.x(frame.approved ? 30 : 8);
+        frame.labelText.width(Math.max(20, frame.labelText.width() + (frame.approved ? -22 : 22)));
+      }
       worldLayer.batchDraw();
     }
 
@@ -2392,10 +2426,14 @@
       frame.labelRect = lRect;
       ag.add(lRect);
 
+      // Reserve room for the right-side controls so the name never runs into
+      // them; overlong names ellipsize.
+      var controlsW = readOnly ? 8 : 3 * 23 + 6;
       var lText = new Konva.Text({
         x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
-        fontSize: 12, fill: themeToken('--artboard-label-txt'), listening: false
+        fontSize: 12, fill: themeToken('--artboard-label-txt'), listening: false,
+        width: Math.max(20, frame.imgW - 8 - controlsW), wrap: 'none', ellipsis: true
       });
       frame.labelText = lText;
       ag.add(lText);
