@@ -118,8 +118,11 @@
     --artboard-label-bg:  rgba(255, 255, 255, 0.10);
     --artboard-label-txt: rgba(255, 255, 255, 0.60);
     --artboard-outline:   rgba(255, 255, 255, 0.12);
-    --artboard-active:    rgba(255, 255, 255, 0.45);
+    --artboard-active:    #5aa9ff;
     --artboard-glass:     rgba(48, 48, 58, 0.88);
+    --artboard-disc:      rgba(255, 255, 255, 0.16);
+    --artboard-disc-hover:rgba(255, 255, 255, 0.30);
+    --artboard-disc-edge: rgba(255, 255, 255, 0.26);
 
     /* ---------- Blur ----------
        One recipe for every panel, and no saturate(). Saturation on a
@@ -259,8 +262,11 @@
     --artboard-label-bg:  rgba(255, 255, 255, 0.55);
     --artboard-label-txt: rgba(0, 0, 0, 0.55);
     --artboard-outline:   rgba(0, 0, 0, 0.14);
-    --artboard-active:    rgba(0, 0, 0, 0.42);
+    --artboard-active:    #1f7ae0;
     --artboard-glass:     rgba(255, 255, 255, 0.92);
+    --artboard-disc:      rgba(0, 0, 0, 0.050);
+    --artboard-disc-hover:rgba(0, 0, 0, 0.115);
+    --artboard-disc-edge: rgba(0, 0, 0, 0.13);
 
     --knob-bg:           #ffffff;
     --knob-icon:         #1c1c1e;
@@ -1684,9 +1690,10 @@
     var ZOOM_STEP = 1.2;       // per wheel notch / button press
     var FIT_PADDING = 0.92;    // leave a little breathing room when fitting
     var ARTBOARD_GAP          = 60;   // canvas-px gap between artboards in grid + snap
-    var ARTBOARD_LABEL_HEIGHT = 40;   // canvas-px label bar above each artboard
-    var ARTBOARD_FRAME_PAD    = 16;   // canvas-px glass mat around the image
-    var ARTBOARD_RADIUS       = 18;   // canvas-px corner radius of the glass frame
+    var ARTBOARD_LABEL_HEIGHT = 56;   // canvas-px top allowance: bar + gap to the image
+    var ARTBOARD_BAR_GAP      = 10;   // canvas-px breathing room between bar and image
+    var ARTBOARD_FRAME_PAD    = 22;   // canvas-px glass mat around the image
+    var ARTBOARD_RADIUS       = 22;   // canvas-px corner radius of the glass frame
     var SNAP_THRESHOLD        = 30;   // canvas-px: how close edge must be to trigger snap
     var GRID_COLS             = 4;    // max artboards per row before wrapping
 
@@ -1978,6 +1985,17 @@
         if (f.labelText) f.labelText.fill(labelTxt);
         if (f.outlineRect) f.outlineRect.stroke(outline);
         if (f.frameGlass) f.frameGlass.fill(themeToken('--artboard-glass'));
+        [f.deleteIcon, f.hideIcon, f.approveIcon].forEach(function (b) {
+          if (!b) return;
+          var d = b.findOne('.discFill'), gl = b.findOne('.discGloss');
+          if (d) { d.fill(themeToken('--artboard-disc')); d.stroke(themeToken('--artboard-disc-edge')); }
+          if (gl) gl.fill(themeToken('--liquid-hi'));
+        });
+        if (f.selectGloss) f.selectGloss.stroke(themeToken('--liquid-hi'));
+        if (f.selectRing && f.selectRing.visible()) {
+          setFrameHighlight(f, selectedFrames.indexOf(f) !== -1 ? 'selected'
+                             : (frames.indexOf(f) === activeFrameIndex ? 'active' : 'none'));
+        }
         if (f.frameHi) f.frameHi.stroke(themeToken('--liquid-hi'));
         if (f.frameLo) f.frameLo.stroke(themeToken('--liquid-lo'));
         [f.deleteIcon, f.hideIcon, f.approveIcon].forEach(function (icon) {
@@ -2340,12 +2358,14 @@
       var col = frames.length % GRID_COLS;
       var lastFrame = frames[frames.length - 1];
       if (col !== 0) {
-        return { x: lastFrame.x + lastFrame.imgW + ARTBOARD_GAP, y: lastFrame.y };
+        return { x: lastFrame.x + lastFrame.imgW + ARTBOARD_FRAME_PAD * 2 + ARTBOARD_GAP,
+                 y: lastFrame.y };
       }
       var rowStart = frames.length - GRID_COLS;
       var maxBottom = 0;
       for (var i = Math.max(0, rowStart); i < frames.length; i++) {
-        maxBottom = Math.max(maxBottom, frames[i].y + frames[i].imgH + ARTBOARD_LABEL_HEIGHT);
+        maxBottom = Math.max(maxBottom,
+          frames[i].y + frames[i].imgH + ARTBOARD_FRAME_PAD + ARTBOARD_LABEL_HEIGHT);
       }
       return { x: 0, y: maxBottom + ARTBOARD_GAP };
     }
@@ -2358,11 +2378,10 @@
 
     function setSelection(list) {
       selectedFrames = list || [];
-      frames.forEach(function (f) {
-        if (!f.outlineRect) return;
-        var sel = selectedFrames.indexOf(f) !== -1;
-        f.outlineRect.stroke(sel ? themeToken('--guide') : themeToken('--artboard-outline'));
-        f.outlineRect.strokeWidth(sel ? 2 : 1);
+      frames.forEach(function (f, i) {
+        if (!f.selectRing) return;
+        if (selectedFrames.indexOf(f) !== -1) setFrameHighlight(f, 'selected');
+        else setFrameHighlight(f, i === activeFrameIndex ? 'active' : 'none');
       });
       worldLayer.batchDraw();
     }
@@ -2453,6 +2472,21 @@
       });
     })();
 
+    // Highlight the whole slab, not just the label bar: 'active' is the frame
+    // you're drawing on, 'selected' is a marquee selection. Both use the same
+    // glossy ring, differing in weight so they stay distinguishable.
+    function setFrameHighlight(frame, mode) {
+      if (!frame.selectRing) return;
+      var on = mode === 'active' || mode === 'selected';
+      var col = mode === 'selected' ? themeToken('--guide') : themeToken('--artboard-active');
+      frame.selectRing.stroke(col);
+      frame.selectRing.shadowColor(col);
+      frame.selectRing.strokeWidth(mode === 'selected' ? 4 : 3);
+      frame.selectRing.shadowOpacity(mode === 'selected' ? 0.95 : 0.7);
+      frame.selectRing.visible(on);
+      frame.selectGloss.visible(on);
+    }
+
     // Hidden: shown at half opacity on the canvas and excluded from any share.
     function setFrameHidden(frame, hidden) {
       frame.hidden = !!hidden;
@@ -2516,11 +2550,13 @@
       frame.frameHi = hiLine; frame.frameLo = loLine;
       ag.add(hiLine); ag.add(loLine);
 
-      // The label bar itself — a lighter band across the top of the slab.
+      // The label bar — a lighter band across the top, stopping short of the
+      // image so the two never touch.
+      var BAR_H = ARTBOARD_LABEL_HEIGHT - ARTBOARD_BAR_GAP;
       var lRect = new Konva.Rect({
         name: 'frameLabel',
         x: -FP, y: -ARTBOARD_LABEL_HEIGHT,
-        width: frameW, height: ARTBOARD_LABEL_HEIGHT,
+        width: frameW, height: BAR_H,
         fill: themeToken('--artboard-label-bg'),
         cornerRadius: [ARTBOARD_RADIUS, ARTBOARD_RADIUS, 0, 0]
       });
@@ -2529,12 +2565,20 @@
 
       // Reserve room for the right-side controls so the name never runs into
       // them; overlong names ellipsize.
-      var PADX = 14, BTN = 22, BGAP = 12;
-      var controlsW = readOnly ? PADX : 3 * BTN + 2 * BGAP + PADX + 4;
+      var PADX = 22, BTN = 32, BGAP = 12;
+      // Narrow artboards: at full size three 32px discs need more width than a
+      // small frame has, and they would spill left across the name. Shrink the
+      // whole cluster so the controls never claim more than ~62% of the bar.
+      if (!readOnly) {
+        var clusterW = 3 * BTN + 2 * BGAP + PADX;
+        var sc = Math.min(1, (frameW * 0.62) / clusterW);
+        if (sc < 1) { BTN = BTN * sc; BGAP = BGAP * sc; PADX = Math.max(6, PADX * sc); }
+      }
+      var controlsW = readOnly ? PADX : 3 * BTN + 2 * BGAP + PADX + BGAP;
       var lText = new Konva.Text({
-        x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 13) / 2,
+        x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (BAR_H - 15) / 2,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
-        fontSize: 13, fontStyle: 'bold',
+        fontSize: 15, fontStyle: 'bold',
         fontFamily: '"Helvetica Neue", Helvetica, Arial, sans-serif',
         fill: themeToken('--artboard-label-txt'), listening: false,
         width: Math.max(20, frameW - PADX - controlsW), wrap: 'none', ellipsis: true
@@ -2543,19 +2587,39 @@
       ag.add(lText);
 
       // ---- Label-bar controls (authors only): approve, hide, delete ----
-      // Small canvas-drawn icon buttons on the right of the bar, plus a green
-      // approved badge on the left. A viewer gets the badge but no buttons.
-      var BPAD = (ARTBOARD_LABEL_HEIGHT - BTN) / 2;
+      // Each icon sits in its own round glass disc, per the iOS reference: a
+      // translucent fill with a specular top arc, so they read as raised
+      // pills on the bar rather than bare glyphs.
+      var BPAD = (BAR_H - BTN) / 2;
       function labelIconButton(name, slot, onClick) {
-        // slot 0 is the rightmost; step by button + gap, inset by the bar padding
+        // slot 0 is the rightmost; step by disc + gap, inset by the bar padding
         var g = new Konva.Group({
           name: name,
           x: -FP + frameW - PADX - BTN - slot * (BTN + BGAP),
           y: -ARTBOARD_LABEL_HEIGHT + BPAD
         });
-        g.add(new Konva.Rect({ width: BTN, height: BTN, cornerRadius: 6, fill: 'rgba(0,0,0,0.001)' }));
-        g.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
-        g.on('mouseleave', function () { stage.container().style.cursor = ''; });
+        var r = BTN / 2;
+        g.add(new Konva.Circle({
+          name: 'discFill', x: r, y: r, radius: r,
+          fill: themeToken('--artboard-disc'),
+          stroke: themeToken('--artboard-disc-edge'), strokeWidth: 1
+        }));
+        // specular arc across the top of the disc
+        g.add(new Konva.Arc({
+          name: 'discGloss', x: r, y: r, innerRadius: r - 1.2, outerRadius: r,
+          angle: 150, rotation: 190,
+          fill: themeToken('--liquid-hi'), listening: false
+        }));
+        g.on('mouseenter', function () {
+          stage.container().style.cursor = 'pointer';
+          g.findOne('.discFill').fill(themeToken('--artboard-disc-hover'));
+          worldLayer.batchDraw();
+        });
+        g.on('mouseleave', function () {
+          stage.container().style.cursor = '';
+          g.findOne('.discFill').fill(themeToken('--artboard-disc'));
+          worldLayer.batchDraw();
+        });
         g.on('click tap', function (e) { e.cancelBubble = true; onClick(); });
         // Two fast clicks on a button are two toggles, not a rename request.
         g.on('dblclick dbltap', function (e) { e.cancelBubble = true; });
@@ -2567,18 +2631,19 @@
       // Approved badge, left of the name (shown whenever the frame is approved,
       // for authors and viewers alike).
       var badge = new Konva.Group({
-        name: 'approveBadge', x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 14) / 2,
+        name: 'approveBadge', x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (BAR_H - 18) / 2,
         listening: false, visible: !!frame.approved
       });
-      badge.add(new Konva.Circle({ x: 7, y: 7, radius: 7, fill: themeToken('--approve') }));
-      badge.add(new Konva.Line({ points: [3.6, 7.2, 6.2, 9.8, 10.6, 4.6],
-        stroke: '#fff', strokeWidth: 1.8, lineCap: 'round', lineJoin: 'round' }));
+      badge.add(new Konva.Circle({ x: 9, y: 9, radius: 9, fill: themeToken('--approve') }));
+      badge.add(new Konva.Line({ points: [4.6, 9.3, 8, 12.6, 13.6, 5.9],
+        stroke: '#fff', strokeWidth: 2, lineCap: 'round', lineJoin: 'round' }));
       frame.approveBadge = badge;
       ag.add(badge);
-      lText.x(-FP + PADX + (frame.approved ? 22 : 0));
+      lText.x(-FP + PADX + (frame.approved ? 28 : 0));
 
       if (!readOnly) {
         var stroke = themeToken('--artboard-label-txt');
+        var c = BTN / 2, gs = BTN / 32;   // glyphs are authored for a 32px disc
 
         // X — delete (slot 0, right edge)
         var del = labelIconButton('frameDelete', 0, function () {
@@ -2592,9 +2657,9 @@
                 (count === 1 ? ' annotation?' : ' annotations?'))) return;
           removeFrame(idx);
         });
-        var c = BTN / 2, sx = 5.4;
-        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.8, lineCap: 'round' }));
-        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.8, lineCap: 'round' }));
+        var sx = 5.4 * gs;
+        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.9 * gs, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.9 * gs, lineCap: 'round' }));
         frame.deleteIcon = del;
 
         // Eye — hide from the canvas and from any share (slot 1)
@@ -2602,10 +2667,10 @@
           setFrameHidden(frame, !frame.hidden);
         });
         eye.add(new Konva.Path({
-          data: 'M2.4 11 C6 5.2 16 5.2 19.6 11 C16 16.8 6 16.8 2.4 11 Z',
-          stroke: stroke, strokeWidth: 1.5
+          data: 'M5.4 16 C9.4 10.4 22.6 10.4 26.6 16 C22.6 21.6 9.4 21.6 5.4 16 Z',
+          stroke: stroke, strokeWidth: 1.55 / gs, listening: false, scaleX: gs, scaleY: gs
         }));
-        eye.add(new Konva.Circle({ x: 11, y: 11, radius: 2.5, stroke: stroke, strokeWidth: 1.5 }));
+        eye.add(new Konva.Circle({ x: c, y: c, radius: 3 * gs, stroke: stroke, strokeWidth: 1.55, listening: false }));
         frame.hideIcon = eye;
         eye.opacity(frame.hidden ? 0.45 : 1);
 
@@ -2613,11 +2678,38 @@
         var ok = labelIconButton('frameApprove', 2, function () {
           setFrameApproved(frame, !frame.approved);
         });
-        ok.add(new Konva.Line({ points: [5.4, 11.6, 9.4, 15.4, 16.4, 6.8],
-          stroke: stroke, strokeWidth: 1.9, lineCap: 'round', lineJoin: 'round' }));
+        ok.add(new Konva.Line({ points: [10 * gs, 16.4 * gs, 14.2 * gs, 20.6 * gs, 22 * gs, 11.6 * gs],
+          stroke: stroke, strokeWidth: 2 * gs, lineCap: 'round', lineJoin: 'round', listening: false }));
         frame.approveIcon = ok;
       }
+
+      // ---- Selection ring ----
+      // Wraps the whole slab, not just the bar, so a selected artboard reads as
+      // one highlighted object. Glossy rather than flat: an accent stroke with a
+      // matching outer glow, plus an inner specular hairline.
+      var ring = new Konva.Rect({
+        name: 'selectRing',
+        x: -FP, y: -ARTBOARD_LABEL_HEIGHT,
+        width: frameW, height: frameH,
+        cornerRadius: ARTBOARD_RADIUS,
+        stroke: themeToken('--artboard-active'), strokeWidth: 3,
+        shadowColor: themeToken('--artboard-active'),
+        shadowBlur: 16, shadowOpacity: 0.85, shadowOffsetY: 0,
+        listening: false, visible: false
+      });
+      var ringGloss = new Konva.Rect({
+        name: 'selectGloss',
+        x: -FP + 2.5, y: -ARTBOARD_LABEL_HEIGHT + 2.5,
+        width: frameW - 5, height: frameH - 5,
+        cornerRadius: ARTBOARD_RADIUS - 2.5,
+        stroke: themeToken('--liquid-hi'), strokeWidth: 1,
+        listening: false, visible: false
+      });
+      frame.selectRing = ring; frame.selectGloss = ringGloss;
+      ag.add(ring); ag.add(ringGloss);
+
       if (frame.hidden) ag.opacity(0.5);
+
 
       // Use existing imageNode if already created, otherwise create it
       if (frame.imageNode) {
@@ -2674,6 +2766,8 @@
       frame.frameGlass = null;
       frame.frameHi = null;
       frame.frameLo = null;
+      frame.selectRing = null;
+      frame.selectGloss = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -2865,14 +2959,16 @@
         var ox1 = other.x, oy1 = other.y;
         var ox2 = ox1 + other.imgW, oy2 = oy1 + other.imgH;
         var d;
-        d = Math.abs(mx2 + ARTBOARD_GAP - ox1);
-        if (d < bestDist) { bestDist = d; snapX = ox1 - movedFrame.imgW - ARTBOARD_GAP; snapY = null; }
-        d = Math.abs(mx1 - ox2 - ARTBOARD_GAP);
-        if (d < bestDist) { bestDist = d; snapX = ox2 + ARTBOARD_GAP; snapY = null; }
-        d = Math.abs(my2 + ARTBOARD_GAP - oy1);
-        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy1 - movedFrame.imgH - ARTBOARD_LABEL_HEIGHT - ARTBOARD_GAP; }
-        d = Math.abs(my1 - oy2 - ARTBOARD_GAP);
-        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy2 + ARTBOARD_GAP; }
+        var GX = ARTBOARD_FRAME_PAD * 2 + ARTBOARD_GAP;              // image-edge pitch, x
+        var GYd = ARTBOARD_FRAME_PAD + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP; // ...and y
+        d = Math.abs(mx2 + GX - ox1);
+        if (d < bestDist) { bestDist = d; snapX = ox1 - movedFrame.imgW - GX; snapY = null; }
+        d = Math.abs(mx1 - ox2 - GX);
+        if (d < bestDist) { bestDist = d; snapX = ox2 + GX; snapY = null; }
+        d = Math.abs(my2 + GYd - oy1);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy1 - movedFrame.imgH - GYd; }
+        d = Math.abs(my1 - oy2 - GYd);
+        if (d < bestDist) { bestDist = d; snapX = null; snapY = oy2 + GYd; }
       });
 
       if (snapX !== null) movedFrame.x = snapX;
@@ -2894,7 +2990,7 @@
         cur.histIndex = histIndex;
         cur.liveAnnotations = annotations;
         // Remove active highlight
-        if (cur.labelRect) cur.labelRect.stroke('');
+        setFrameHighlight(cur, 'none');
       }
 
       activeFrameIndex = i;
@@ -2910,8 +3006,8 @@
       compareV2Image = target.v2Image || null;
       imageNode = target.imageNode;
 
-      // Highlight active artboard label
-      if (target.labelRect) target.labelRect.stroke(themeToken('--artboard-active'));
+      // Highlight the whole active artboard
+      setFrameHighlight(target, 'active');
 
       // Offset stagingLayer to active artboard origin
       stagingLayer.position({ x: target.x || 0, y: target.y || 0 });
@@ -4371,8 +4467,10 @@
       var y0 = Math.min.apply(null, targets.map(function (f) { return f.y; }));
       var cursor = axis === 'x' ? x0 : y0;
       targets.forEach(function (f) {
-        if (axis === 'x') { f.x = cursor; f.y = y0; cursor += f.imgW + ARTBOARD_GAP; }
-        else { f.y = cursor; f.x = x0; cursor += f.imgH + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP; }
+        // step by the whole slab (image + mat + label allowance) so the gap you
+        // see between two artboards is ARTBOARD_GAP on either axis
+        if (axis === 'x') { f.x = cursor; f.y = y0; cursor += f.imgW + ARTBOARD_FRAME_PAD * 2 + ARTBOARD_GAP; }
+        else { f.y = cursor; f.x = x0; cursor += f.imgH + ARTBOARD_FRAME_PAD + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP; }
         f.artboardGroup.position({ x: f.x, y: f.y });
       });
       var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
