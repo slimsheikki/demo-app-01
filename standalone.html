@@ -336,6 +336,9 @@
 
   /* ---- Draw-mode cursor ---- */
   #stage.draw-mode { cursor: crosshair !important; }
+  /* Z-held zoom tool — must beat .draw-mode's !important cursor */
+  #stage.zoom-in-mode  { cursor: zoom-in !important; }
+  #stage.zoom-out-mode { cursor: zoom-out !important; }
 
   /* ---- Toolbar (pan / draw toggle) ---- */
   #toolbar {
@@ -1257,6 +1260,7 @@
     var editingAnnotation = null;
     var spacePanning = false;
     var prevToolBeforeSpace = null;
+    var zoomKeyActive = false;   // Z held — temporary zoom tool (see "Z = hold-to-zoom" below)
     var recentColors = [];
     var MAX_RECENTS = 8;
     var renderRecents = null; // assigned by color picker IIFE
@@ -2564,6 +2568,7 @@
     // ---- Draw event handlers ----
     stage.on('mousedown touchstart', function (e) {
       if (currentTool !== 'draw' || !imageNode) return;
+      if (zoomKeyActive) return;    // Z held: the drag is a zoom scrub, not a stroke
       if (e.evt.button != null && e.evt.button !== 0) return; // ignore middle/right mouse buttons
       if (e.evt.touches && e.evt.touches.length > 1) return;
       isDrawing = true;
@@ -2812,6 +2817,102 @@
       if (prevToolBeforeMiddle && prevToolBeforeMiddle !== 'pan') setTool(prevToolBeforeMiddle);
       prevToolBeforeMiddle = null;
     });
+
+    // ---- Z = hold-to-zoom (temporary zoom tool, like Photoshop's Z) ----
+    // Click zooms in at the cursor; click-drag scrubs zoom continuously (right = in,
+    // left = out). Alt/Option inverts the click direction. Deliberately keyed off
+    // e.code so Alt's remapped e.key on macOS ('Ω') doesn't break it, and it bails
+    // whenever Ctrl/Cmd is down so Cmd+Z undo and Cmd+Shift+Z redo are untouched.
+    (function () {
+      var DRAG_THRESHOLD = 4;     // px of travel before a click becomes a scrub
+      var DRAG_SENSITIVITY = 1.006; // scale multiplier per px dragged (~1.8x per 100px)
+      var dragging = false, moved = false;
+      var startX, startScale, anchor;
+      var wasDraggable = false;
+
+      function pointerIn(e) {
+        var r = stageEl.getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+
+      function paintCursor(altDown) {
+        stageEl.classList.toggle('zoom-in-mode', !altDown);
+        stageEl.classList.toggle('zoom-out-mode', altDown);
+      }
+
+      function activate(altDown) {
+        zoomKeyActive = true;
+        wasDraggable = stage.draggable();
+        stage.draggable(false);   // left-drag is a zoom scrub, not a pan
+        paintCursor(altDown);
+      }
+
+      function deactivate() {
+        if (!zoomKeyActive) return;
+        zoomKeyActive = false;
+        dragging = false;
+        moved = false;
+        stage.draggable(wasDraggable);
+        stageEl.classList.remove('zoom-in-mode', 'zoom-out-mode');
+      }
+
+      window.addEventListener('keydown', function (e) {
+        if (e.ctrlKey || e.metaKey) return;   // leave undo/redo and browser zoom alone
+        if (e.code === 'KeyZ' && !e.repeat && imageNode && !isTypingTarget(document.activeElement)) {
+          if (zoomKeyActive) return;
+          e.preventDefault();
+          activate(e.altKey);
+          return;
+        }
+        // Alt pressed/released mid-hold just flips the cursor affordance
+        if (zoomKeyActive && e.code.indexOf('Alt') === 0) paintCursor(true);
+      });
+
+      window.addEventListener('keyup', function (e) {
+        if (e.code === 'KeyZ') { deactivate(); return; }
+        if (zoomKeyActive && e.code.indexOf('Alt') === 0) paintCursor(false);
+      });
+
+      // A held key never gets its keyup if focus leaves the window — don't get stuck.
+      window.addEventListener('blur', deactivate);
+
+      // Capture phase: claim the press before Konva's stage handlers see it.
+      window.addEventListener('mousedown', function (e) {
+        if (!zoomKeyActive || e.button !== 0 || !imageNode) return;
+        if (!stageEl.contains(e.target)) return;   // ignore clicks on toolbars/panels
+        e.preventDefault();
+        e.stopPropagation();
+        dragging = true;
+        moved = false;
+        startX = e.clientX;
+        startScale = stage.scaleX();
+        anchor = pointerIn(e);
+      }, true);
+
+      window.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        var dx = e.clientX - startX;
+        if (!moved && Math.abs(dx) < DRAG_THRESHOLD) return;
+        moved = true;
+        zoomTo(startScale * Math.pow(DRAG_SENSITIVITY, dx), anchor);
+      }, true);
+
+      // Two quick zoom-clicks are still a native dblclick; don't let them also
+      // trigger the stage's dblclick-to-fit.
+      window.addEventListener('dblclick', function (e) {
+        if (!zoomKeyActive || !stageEl.contains(e.target)) return;
+        e.preventDefault();
+        e.stopPropagation();
+      }, true);
+
+      window.addEventListener('mouseup', function (e) {
+        if (!dragging || e.button !== 0) return;
+        dragging = false;
+        // No meaningful travel: treat it as a click-to-step zoom at the cursor.
+        if (!moved) zoomTo(stage.scaleX() * (e.altKey ? 1 / ZOOM_STEP : ZOOM_STEP), anchor);
+        moved = false;
+      }, true);
+    })();
 
     // ---- Draggable layers panel (with snap-dock to color picker) ----
     (function () {
