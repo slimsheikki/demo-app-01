@@ -26,8 +26,6 @@
        shifts how you judge tone and colour in the photograph sitting on it. */
     --ground:            #2b2b2b;
     --panel-bg:          rgba(22, 22, 28, 0.85);
-    --panel-bg-soft:     rgba(22, 22, 28, 0.78);
-    --panel-bg-alt:      rgba(24, 24, 30, 0.82);
     --glass-bg:          rgba(255, 255, 255, 0.06);
     --glass-bg-hover:    rgba(255, 255, 255, 0.10);
 
@@ -94,7 +92,6 @@
     --scrim:             rgba(0, 0, 0, 0.45);
 
     /* ---------- Semantic ---------- */
-    --accent-glow:       rgba(120, 180, 255, 0.35);
     --danger:            #ff6b6b;
     --danger-wash:       rgba(255, 107, 107, 0.16);
     --danger-wash-soft:  rgba(255, 107, 107, 0.10);
@@ -123,13 +120,12 @@
     --artboard-outline:   rgba(255, 255, 255, 0.12);
     --artboard-active:    rgba(255, 255, 255, 0.45);
 
-    /* ---------- Blur recipes ---------- */
+    /* ---------- Blur ----------
+       One recipe for every panel, and no saturate(). Saturation on a
+       translucent panel shifts the apparent colour of the photograph beneath
+       and beside it, which a colour-review tool must not do. */
     --blur-sm:           blur(8px);
-    --blur-toast:        blur(12px);
-    --blur-md:           blur(16px) saturate(140%);
-    --blur-lg:           blur(20px) saturate(140%);
-    --blur-card:         blur(22px) saturate(140%);
-    --blur-xl:           blur(24px) saturate(140%);
+    --blur-panel:        blur(12px);
 
     /* ---------- Geometry ---------- */
     --rail-w:            220px;
@@ -144,7 +140,6 @@
     --focus-ring:        rgba(255, 255, 255, 0.65);
 
     /* ---------- Type scale ---------- */
-    --fs-eyebrow-sm:     10px;
     --fs-eyebrow:        10.5px;
     --fs-xs:             11px;
     --fs-sm:             12.5px;
@@ -168,8 +163,6 @@
 
     --ground:            #e9e9e9;
     --panel-bg:          rgba(252, 252, 253, 0.88);
-    --panel-bg-soft:     rgba(252, 252, 253, 0.82);
-    --panel-bg-alt:      rgba(255, 255, 255, 0.88);
     --glass-bg:          rgba(255, 255, 255, 0.66);
     --glass-bg-hover:    rgba(0, 0, 0, 0.06);
 
@@ -227,7 +220,6 @@
     --cmp-label-txt:     rgba(0, 0, 0, 0.85);
     --scrim:             rgba(0, 0, 0, 0.28);
 
-    --accent-glow:       rgba(60, 130, 220, 0.30);
     --danger:            #cf2f2f;
     --danger-wash:       rgba(207, 47, 47, 0.10);
     --danger-wash-soft:  rgba(207, 47, 47, 0.07);
@@ -255,6 +247,31 @@
     --knob-bg:           #ffffff;
     --knob-icon:         #1c1c1e;
     --focus-ring:        rgba(0, 0, 0, 0.55);
+  }
+
+  /* Without backdrop-filter the translucent panels are barely visible — and a
+     light theme makes that far worse. Fall back to opaque surfaces. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root { --panel-bg: #212127; --glass-bg: #212127; }
+    :root[data-theme="light"] { --panel-bg: #fbfbfc; --glass-bg: #fbfbfc; }
+  }
+
+  /* Honour a reduced-motion preference across the whole UI: the app has ~20
+     transitions and none of them carry meaning. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* One visible focus ring for every interactive control. */
+  button:focus-visible,
+  input:focus-visible,
+  [contenteditable]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -297,8 +314,8 @@
     border: 1px solid var(--glass-border);
     border-radius: 14px;
     background: var(--glass-bg);
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
     box-shadow: 0 4px 14px var(--sh-3);
     cursor: pointer;
     transition: background var(--dur-2) ease, border-color var(--dur-2) ease;
@@ -377,11 +394,10 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 22px;
-    backdrop-filter: var(--blur-card);
-    -webkit-backdrop-filter: var(--blur-card);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
     box-shadow:
-      0 24px 60px var(--sh-5),
-      inset 0 1px 0 var(--edge-4);
+      0 24px 60px var(--sh-5);
     transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
   }
   #drop.dragover .card {
@@ -389,8 +405,7 @@
     background: var(--glass-bg-hover);
     box-shadow:
       0 24px 70px var(--sh-6),
-      0 0 0 4px var(--accent-glow),
-      inset 0 1px 0 var(--edge-6);
+      0 0 0 4px var(--glass-border-active);
     transform: scale(1.01);
   }
 
@@ -452,8 +467,8 @@
     padding: 11px 18px;
     border-radius: 12px;
     font-size: 13px;
-    backdrop-filter: var(--blur-toast);
-    -webkit-backdrop-filter: var(--blur-toast);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
     box-shadow: 0 12px 30px var(--sh-4);
     opacity: 0;
     pointer-events: none;
@@ -478,9 +493,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 14px 36px var(--sh-4), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 14px 36px var(--sh-4);
     z-index: 20;
     user-select: none;
   }
@@ -571,9 +586,9 @@
     border-radius: 50%;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-4), inset 0 1px 0 var(--edge-4);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-4);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -611,9 +626,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-3), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-3);
     z-index: 21;
     user-select: none;
   }
@@ -662,9 +677,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 14px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-3), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-3);
     z-index: 20;
     user-select: none;
   }
@@ -716,9 +731,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: var(--blur-md);
-    -webkit-backdrop-filter: var(--blur-md);
-    box-shadow: 0 6px 20px var(--sh-4), inset 0 1px 0 var(--edge-5);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 6px 20px var(--sh-4);
     transition: transform .12s ease, filter .12s ease;
   }
   .commit-btn:hover { transform: scale(1.09); filter: brightness(1.1); }
@@ -744,12 +759,12 @@
     gap: 10px;
     width: min(340px, calc(100vw - 40px));
     padding: 14px;
-    background: var(--panel-bg-alt);
+    background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-xl);
-    -webkit-backdrop-filter: var(--blur-xl);
-    box-shadow: 0 20px 50px var(--sh-7), inset 0 1px 0 var(--edge-2);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 20px 50px var(--sh-7);
     z-index: 30;
   }
   #commentBox.show { display: flex; }
@@ -792,24 +807,32 @@
     /* dvh first as a fallback for browsers without it, then the accurate value */
     max-height: calc(100vh - 80px - var(--util-h));
     max-height: calc(100dvh - 80px - var(--util-h));
-    background: var(--panel-bg-soft);
+    background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 16px 40px var(--sh-6), inset 0 1px 0 var(--edge-1);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 16px 40px var(--sh-6);
     z-index: 20;
     overflow: hidden;
   }
   #layersPanel.show { display: flex; }
 
-  #layersPanelHeader {
-    padding: 11px 13px 9px;
-    font-size: 10.5px;
+  /* The one typographic voice the app already had: a small, heavily tracked
+     uppercase label. Formalised here as a single rule instead of four copies. */
+  #layersPanelHeader,
+  #colorPickerHeader,
+  #cpRecentsLabel,
+  #cpBrushLabel {
+    font-size: var(--fs-eyebrow);
     font-weight: 700;
     letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--txt-dim);
+  }
+
+  #layersPanelHeader {
+    padding: 11px 13px 9px;
     border-bottom: 1px solid var(--divider);
     flex-shrink: 0;
     cursor: grab;
@@ -913,9 +936,9 @@
     background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 16px 40px var(--sh-7), inset 0 1px 0 var(--edge-1);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 16px 40px var(--sh-7);
     z-index: 22;
     overflow: visible;
     padding-bottom: 12px;
@@ -923,11 +946,6 @@
 
   #colorPickerHeader {
     padding: 11px 13px 9px;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
     border-bottom: 1px solid var(--divider);
     flex-shrink: 0;
     cursor: grab;
@@ -1024,13 +1042,6 @@
     margin: 8px 12px 0;
   }
   #cpRecentsWrap.has-recents { display: flex; }
-  #cpRecentsLabel {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
-  }
   #cpRecents {
     display: flex;
     flex-wrap: wrap;
@@ -1049,7 +1060,7 @@
   .cp-recent:hover { transform: scale(1.25); border-color: var(--swatch-border-hover); }
   .cp-recent.active {
     border-color: var(--thumb-border);
-    box-shadow: 0 0 0 1.5px var(--accent-glow), 0 1px 3px var(--sh-2);
+    box-shadow: 0 0 0 1.5px var(--glass-border-active), 0 1px 3px var(--sh-2);
   }
 
   /* Brush size slider */
@@ -1063,13 +1074,6 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-  #cpBrushLabel {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
   }
   #cpBrushNum {
     font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -1132,8 +1136,8 @@
       border-radius: 15px;
       border: 2px solid var(--dock-border);
       background: var(--panel-bg);
-      backdrop-filter: var(--blur-md);
-      -webkit-backdrop-filter: var(--blur-md);
+      backdrop-filter: var(--blur-panel);
+      -webkit-backdrop-filter: var(--blur-panel);
       box-shadow: 0 6px 18px var(--sh-5);
       display: flex;
       align-items: center;
@@ -1246,8 +1250,8 @@
       border-radius: 20px;
       background: var(--panel-bg);
       border: 1px solid var(--glass-border);
-      backdrop-filter: var(--blur-md);
-      -webkit-backdrop-filter: var(--blur-md);
+      backdrop-filter: var(--blur-panel);
+      -webkit-backdrop-filter: var(--blur-panel);
       box-shadow: 0 6px 18px var(--sh-5);
       z-index: 25;
     }
