@@ -2178,6 +2178,10 @@
         }
 
         if (frames.length > firstNewIndex) setActiveFrame(firstNewIndex);
+        // Frame this drop's full canvas: whatever you just added, and everything
+        // already there. Deferred a frame so the artboard chrome above has
+        // actually laid out before fitAll measures it.
+        requestAnimationFrame(fitAll);
       });
     }
 
@@ -2835,7 +2839,9 @@
 
       setTool(readOnly ? 'pan' : currentTool);
 
-      // fitAll only on first activation (wasEmpty transition)
+      // Deliberately no fitAll() here — switching the active artboard (by click,
+      // selection, or arrow-key) shouldn't change what's visible. Only adding
+      // frames (addFrames) or explicit fit actions change the view.
       requestAnimationFrame(function() {
         renderLayersPanel();
         updateUndoRedoButtons();
