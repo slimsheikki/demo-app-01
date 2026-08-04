@@ -1911,9 +1911,13 @@
         }
         if (f.labelText) f.labelText.fill(labelTxt);
         if (f.outlineRect) f.outlineRect.stroke(outline);
-        if (f.deleteIcon) {
-          f.deleteIcon.find('Line').forEach(function (l) { l.stroke(labelTxt); });
-        }
+        [f.deleteIcon, f.hideIcon, f.approveIcon].forEach(function (icon) {
+          if (!icon) return;
+          icon.find('Line, Path, Circle').forEach(function (sh) {
+            if (sh.stroke()) sh.stroke(labelTxt);
+          });
+        });
+        if (f.approveBadge) f.approveBadge.findOne('Circle').fill(themeToken('--approve'));
       });
       if (typeof worldLayer !== 'undefined' && worldLayer) worldLayer.batchDraw();
     }
@@ -2252,6 +2256,21 @@
       return { x: 0, y: maxBottom + ARTBOARD_GAP };
     }
 
+    // Hidden: shown at half opacity on the canvas and excluded from any share.
+    function setFrameHidden(frame, hidden) {
+      frame.hidden = !!hidden;
+      if (frame.artboardGroup) frame.artboardGroup.opacity(frame.hidden ? 0.5 : 1);
+      if (frame.hideIcon) frame.hideIcon.opacity(frame.hidden ? 0.45 : 1);
+      worldLayer.batchDraw();
+    }
+
+    function setFrameApproved(frame, approved) {
+      frame.approved = !!approved;
+      if (frame.approveBadge) frame.approveBadge.visible(frame.approved);
+      if (frame.labelText) frame.labelText.x(frame.approved ? 30 : 8);
+      worldLayer.batchDraw();
+    }
+
     function mountArtboard(frame) {
       if (frame.artboardGroup) return;
       var ag = new Konva.Group({ x: frame.x || 0, y: frame.y || 0 });
@@ -2273,29 +2292,46 @@
       frame.labelText = lText;
       ag.add(lText);
 
-      // Delete control on the label bar. Authors only — a viewer has nothing to
-      // delete. Until now removeFrame() had no caller at all, so a mis-dropped
-      // photo could only be cleared by reloading and losing the whole session.
-      if (!readOnly) {
-        var D = 18, c = D / 2, s = 4.5;
-        var pad = (ARTBOARD_LABEL_HEIGHT - D) / 2;
-        var del = new Konva.Group({
-          name: 'frameDelete',
-          x: frame.imgW - D - pad, y: -ARTBOARD_LABEL_HEIGHT + pad
+      // ---- Label-bar controls (authors only): approve, hide, delete ----
+      // Small canvas-drawn icon buttons on the right of the bar, plus a green
+      // approved badge on the left. A viewer gets the badge but no buttons.
+      var BTN = 18, BPAD = (ARTBOARD_LABEL_HEIGHT - BTN) / 2;
+      function labelIconButton(name, slot, onClick) {
+        var g = new Konva.Group({
+          name: name,
+          x: frame.imgW - (BTN + BPAD) * (slot + 1), y: -ARTBOARD_LABEL_HEIGHT + BPAD
         });
-        // transparent rect gives the two thin strokes a usable hit area
-        del.add(new Konva.Rect({ width: D, height: D, cornerRadius: 4, fill: 'rgba(0,0,0,0.001)' }));
+        g.add(new Konva.Rect({ width: BTN, height: BTN, cornerRadius: 4, fill: 'rgba(0,0,0,0.001)' }));
+        g.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
+        g.on('mouseleave', function () { stage.container().style.cursor = ''; });
+        g.on('click tap', function (e) { e.cancelBubble = true; onClick(); });
+        // Two fast clicks on a button are two toggles, not a rename request.
+        g.on('dblclick dbltap', function (e) { e.cancelBubble = true; });
+        g.on('pointerdown', function (e) { e.cancelBubble = true; });   // don't start a drag
+        ag.add(g);
+        return g;
+      }
+
+      // Approved badge, left of the name (shown whenever the frame is approved,
+      // for authors and viewers alike).
+      var badge = new Konva.Group({
+        name: 'approveBadge', x: 8, y: -ARTBOARD_LABEL_HEIGHT + (ARTBOARD_LABEL_HEIGHT - 14) / 2,
+        listening: false, visible: !!frame.approved
+      });
+      badge.add(new Konva.Circle({ x: 7, y: 7, radius: 7, fill: themeToken('--approve') }));
+      badge.add(new Konva.Line({ points: [3.6, 7.2, 6.2, 9.8, 10.6, 4.6],
+        stroke: '#fff', strokeWidth: 1.8, lineCap: 'round', lineJoin: 'round' }));
+      frame.approveBadge = badge;
+      ag.add(badge);
+      lText.x(frame.approved ? 30 : 8);
+
+      if (!readOnly) {
         var stroke = themeToken('--artboard-label-txt');
-        del.add(new Konva.Line({ points: [c - s, c - s, c + s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
-        del.add(new Konva.Line({ points: [c + s, c - s, c - s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
-        del.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
-        del.on('mouseleave', function () { stage.container().style.cursor = ''; });
-        del.on('click tap', function (e) {
-          e.cancelBubble = true;   // don't also activate/drag the artboard
+
+        // X — delete (slot 0, right edge)
+        var del = labelIconButton('frameDelete', 0, function () {
           var idx = frames.indexOf(frame);
           if (idx < 0) return;
-          // Removing a frame drops its annotations and isn't undoable, so ask
-          // first — but only when there is actually something to lose.
           var count = (frame.liveAnnotations && frame.liveAnnotations.length) ||
                       (frame.snapshot && frame.snapshot.annotations ? frame.snapshot.annotations.length : 0);
           var name = frame.label || ('Frame ' + (idx + 1));
@@ -2304,9 +2340,32 @@
                 (count === 1 ? ' annotation?' : ' annotations?'))) return;
           removeFrame(idx);
         });
+        var c = BTN / 2, sx = 4.5;
+        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
         frame.deleteIcon = del;
-        ag.add(del);
+
+        // Eye — hide from the canvas and from any share (slot 1)
+        var eye = labelIconButton('frameHide', 1, function () {
+          setFrameHidden(frame, !frame.hidden);
+        });
+        eye.add(new Konva.Path({
+          data: 'M2 9 C5 4.2 13 4.2 16 9 C13 13.8 5 13.8 2 9 Z',
+          stroke: stroke, strokeWidth: 1.4
+        }));
+        eye.add(new Konva.Circle({ x: 9, y: 9, radius: 2.1, stroke: stroke, strokeWidth: 1.4 }));
+        frame.hideIcon = eye;
+        eye.opacity(frame.hidden ? 0.45 : 1);
+
+        // Check — approve (slot 2)
+        var ok = labelIconButton('frameApprove', 2, function () {
+          setFrameApproved(frame, !frame.approved);
+        });
+        ok.add(new Konva.Line({ points: [4.5, 9.5, 7.8, 12.6, 13.5, 5.6],
+          stroke: stroke, strokeWidth: 1.7, lineCap: 'round', lineJoin: 'round' }));
+        frame.approveIcon = ok;
       }
+      if (frame.hidden) ag.opacity(0.5);
 
       // Use existing imageNode if already created, otherwise create it
       if (frame.imageNode) {
@@ -2357,6 +2416,9 @@
       frame.labelText = null;
       frame.outlineRect = null;
       frame.deleteIcon = null;
+      frame.hideIcon = null;
+      frame.approveIcon = null;
+      frame.approveBadge = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -2374,11 +2436,12 @@
 
     function rebuildAnnotationsInArtboard(frame) {
       // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount).
-      // Scoped by name: the artboard's own delete control is also a Group, and a
-      // blanket "destroy every Group child" would take it out too.
+      // Scoped by name: the label-bar controls are also Groups, and a blanket
+      // "destroy every Group child" would take them out too.
+      var LABEL_CONTROLS = { frameDelete: 1, frameHide: 1, frameApprove: 1, approveBadge: 1 };
       if (frame.artboardGroup) {
         frame.artboardGroup.getChildren().forEach(function(child) {
-          if (child instanceof Konva.Group && child.name() !== 'frameDelete') child.destroy();
+          if (child instanceof Konva.Group && !LABEL_CONTROLS[child.name()]) child.destroy();
         });
       }
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -3897,21 +3960,28 @@
       }
       // Make sure the active frame's live annotations are captured
       frames[activeFrameIndex].snapshot = snapshotState();
-      var tooBig = frames.filter(function (f) { return f.blob && f.blob.size > MAX_UPLOAD_BYTES; });
+      var tooBig = frames.filter(function (f) { return !f.hidden && f.blob && f.blob.size > MAX_UPLOAD_BYTES; });
       if (tooBig.length) {
         showError('A photo is too big to share (limit ' + Math.round(MAX_UPLOAD_BYTES / 1048576) + 'MB each).');
         return;
       }
 
+      // Hidden artboards stay local — they are not uploaded and not in the doc.
+      var shareFrames = frames.filter(function (f) { return !f.hidden; });
+      if (!shareFrames.length) {
+        showError('Every image is hidden — unhide at least one to share.');
+        return;
+      }
+
       shareBtn.disabled = true;
       var projId = makeShareId();
-      var n = frames.length;
+      var n = shareFrames.length;
 
       // Upload each frame's v1 sequentially (clear progress), then insert the project doc.
       var idx = 0;
       function uploadNext() {
         if (idx >= n) return Promise.resolve();
-        var f = frames[idx];
+        var f = shareFrames[idx];
         var path = projId + '/' + f.id + '/v1.' + extForBlob(f.blob);
         showToast('Uploading ' + (idx + 1) + '/' + n + '…', true);
         return supaUpload(path, f.blob).then(function () { f.imagePath = path; idx++; return uploadNext(); });
@@ -3919,14 +3989,14 @@
 
       uploadNext()
         .then(function () {
-          var doc = frames.map(function (f) {
+          var doc = shareFrames.map(function (f) {
             // label is persisted so viewers see the artboard's real name; the
             // viewer already reads it and falls back to "Frame N" without it.
             return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null,
                      annotations: f.snapshot, x: f.x || 0, y: f.y || 0,
-                     label: f.label || null };
+                     label: f.label || null, approved: !!f.approved };
           });
-          return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
+          return supaInsertSession({ id: projId, annotations: doc, image_path: shareFrames[0].imagePath });
         })
         .then(function () {
           shareId = projId; projectId = projId;
@@ -4002,6 +4072,17 @@
     // Any other view change makes the stored return-view stale; drop it so F
     // starts a fresh focus rather than jumping somewhere unexpected.
     stage.on('wheel dragend', function () { focusReturn = null; });
+
+    // ---- A toggles approval of the active artboard ----
+    window.addEventListener('keydown', function (e) {
+      if (e.code !== 'KeyA' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
+      var frame = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (!frame) return;
+      e.preventDefault();
+      setFrameApproved(frame, !frame.approved);
+      showToast(frame.approved ? 'Approved ✓' : 'Approval removed', true);
+    });
 
     // ---- Esc abandons an in-progress drawing ----
     // Discards the staged strokes and returns to the pan tool — the same state
@@ -4285,6 +4366,7 @@
               x: (typeof el.x === 'number') ? el.x : null,
               y: (typeof el.y === 'number') ? el.y : null,
               label: el.label || null,
+              approved: !!el.approved,
               artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
               liveAnnotations: []
             };
