@@ -1691,6 +1691,9 @@
       <div class="sc-row"><span>Brush smaller / bigger</span><kbd>Q / E</kbd></div>
       <div class="sc-row"><span>Cancel drawing or selection</span><kbd>Esc</kbd></div>
       <div class="sc-row"><span>Rename artboard</span><kbd>Double-click name</kbd></div>
+      <div class="sc-row"><span>Resize artboard</span><kbd>Drag a corner</kbd></div>
+      <div class="sc-row"><span>Resize freely (no aspect lock)</span><kbd>Shift + drag corner</kbd></div>
+      <div class="sc-row"><span>Deselect</span><kbd>Click empty canvas</kbd></div>
       <div class="sc-row"><span>Select all artboards</span><kbd>Ctrl / Cmd + A</kbd></div>
       <div class="sc-row"><span>Arrange in a row</span><kbd>1</kbd></div>
       <div class="sc-row"><span>Arrange in a column</span><kbd>2</kbd></div>
@@ -2185,14 +2188,13 @@
       var ins = chromeInsets(false);
       var topInset = ins.top, bottomInset = ins.bottom;
 
-      var hasChrome = frames.length > 1;
-      var pad = hasChrome ? ARTBOARD_FRAME_PAD : 0;
+      var pad = ARTBOARD_FRAME_PAD;
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       frames.forEach(function(f) {
         var fx = f.x || 0, fy = f.y || 0;
         // the glass mat extends past the image on all four sides
         minX = Math.min(minX, fx - pad);
-        minY = Math.min(minY, fy - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0));
+        minY = Math.min(minY, fy - ARTBOARD_LABEL_HEIGHT);
         maxX = Math.max(maxX, fx + f.imgW + pad);
         maxY = Math.max(maxY, fy + f.imgH + pad);
       });
@@ -2283,23 +2285,11 @@
         if (frames.length === 0) return;
         if (wasEmpty) showChrome();
 
-        // When going from 1 → 2 frames, retroactively mount artboard chrome on frame 0
-        if (frames.length === 2 && firstNewIndex === 1) {
-          mountArtboard(frames[0]);
-        }
-        // Mount all newly added frames that need artboard chrome (i.e. 2+ total)
-        if (frames.length > 1) {
-          for (var ni = firstNewIndex; ni < frames.length; ni++) {
-            mountArtboard(frames[ni]);
-          }
-        } else {
-          // Single image: add imageNode directly to worldLayer (no artboard chrome)
-          var f0 = frames[0];
-          if (!f0.imageNode) {
-            f0.imageNode = new Konva.Image({ image: f0.image, x: 0, y: 0, width: f0.imgW, height: f0.imgH });
-            worldLayer.add(f0.imageNode);
-          }
-        }
+        // Every frame gets artboard chrome, including a lone one. Keeping a
+        // separate bare-image path for single frames meant the frame/label/
+        // selection UI vanished at exactly the moment most people use the app,
+        // and it was the source of the 1<->2 mount/unmount seam.
+        for (var ni = 0; ni < frames.length; ni++) mountArtboard(frames[ni]);
 
         if (frames.length > firstNewIndex) setActiveFrame(firstNewIndex);
         // Frame this drop's full canvas: whatever you just added, and everything
@@ -2316,7 +2306,10 @@
         .then(function (r) { if (!r.ok) throw new Error('image ' + r.status); return r.blob(); })
         .then(function (blob) { frame.blob = blob; return decodeImage(blob); })
         .then(function (res) {
-          frame.image = res.img; frame.imgW = res.w; frame.imgH = res.h;
+          frame.image = res.img;
+          // A shared artboard may have been resized; fall back to natural size.
+          frame.imgW = frame.dispW || res.w;
+          frame.imgH = frame.dispH || res.h;
           if (frame.imageV2Path && !frame.v2Image) {
             return fetch(supaPublicUrl(frame.imageV2Path))
               .then(function (r) { return r.blob(); })
@@ -2329,49 +2322,11 @@
     // Make frame i the live one: save the current frame, then rebuild from the target.
     function hydrateAndMountFrame(frame) {
       if (frame.image) {
-        if (!frame.artboardGroup && frames.length > 1) mountArtboard(frame);
+        if (!frame.artboardGroup) mountArtboard(frame);
         return Promise.resolve();
       }
       return hydrateFrame(frame).then(function() {
-        if (!frame.artboardGroup && frames.length > 1) mountArtboard(frame);
-      });
-    }
-
-    // switchFrame kept as compatibility shim for the single-frame viewer bootstrap
-    function switchFrame(i) {
-      if (i < 0 || i >= frames.length) return Promise.resolve();
-      var target = frames[i];
-      var pre = (!target.image && target.imagePath) ? hydrateFrame(target) : Promise.resolve();
-      return pre.then(function () {
-        if (compareMode) exitCompare();
-        if (activeFrameIndex >= 0 && frames[activeFrameIndex]) {
-          var cur = frames[activeFrameIndex];
-          cur.snapshot = snapshotState();
-          cur.history = history;
-          cur.histIndex = histIndex;
-        }
-        activeFrameIndex = i;
-        if (imageNode) { imageNode.destroy(); imageNode = null; }
-        // The target may already own a node parented straight to worldLayer —
-        // unmountArtboard() re-parents one there when a project drops to a single
-        // frame. Destroying only the global imageNode (which points at the frame
-        // we just left) would strand it and leave two images stacked on the canvas.
-        if (target.imageNode) { target.imageNode.destroy(); target.imageNode = null; }
-        imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
-        imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
-        target.imageNode = imageNode;
-        worldLayer.add(imageNode);
-        imageNode.moveToBottom();
-        history = target.history; histIndex = target.histIndex;
-        restoreSnapshot(target.snapshot);
-        if (histIndex < 0) resetHistory();
-        setTool(readOnly ? 'pan' : currentTool);
-        fitAll();
-        renderLayersPanel();
-        updateUndoRedoButtons();
-        compareV2Image = target.v2Image || null;
-        if (target.v2Image || target.imageV2Path) document.body.classList.add('has-v2');
-        else document.body.classList.remove('has-v2');
+        if (!frame.artboardGroup) mountArtboard(frame);
       });
     }
 
@@ -2413,21 +2368,11 @@
         return;
       }
 
-      // If going from 2 → 1 frames, unmount artboard chrome from the surviving frame
-      if (frames.length === 1 && frames[0].artboardGroup) {
-        unmountArtboard(frames[0]);
-      }
-
       if (removingActive) {
         activeFrameIndex = -1;
         var newIdx = Math.min(i, frames.length - 1);
-        if (frames.length > 1) {
-          setActiveFrame(newIdx);
-          fitAll();
-        } else {
-          switchFrame(newIdx);
-          fitAll();
-        }
+        setActiveFrame(newIdx);
+        fitAll();
       } else {
         if (i < activeFrameIndex) activeFrameIndex--;
         worldLayer.batchDraw();
@@ -2459,13 +2404,26 @@
     // artboard's image then moves the whole selection together.
     var selectedFrames = [];
 
+    // Whether the active frame shows its ring. Clicking empty canvas turns this
+    // off without clearing activeFrameIndex — drawing still needs a target, so
+    // "deselected" here is purely a visual state.
+    var highlightActive = true;
+
     function setSelection(list) {
       selectedFrames = list || [];
       frames.forEach(function (f, i) {
         if (!f.selectRing) return;
         if (selectedFrames.indexOf(f) !== -1) setFrameHighlight(f, 'selected');
-        else setFrameHighlight(f, i === activeFrameIndex ? 'active' : 'none');
+        else setFrameHighlight(f, (i === activeFrameIndex && highlightActive) ? 'active' : 'none');
       });
+      worldLayer.batchDraw();
+    }
+
+    // Clicking blank canvas clears every highlight.
+    function deselectAll() {
+      highlightActive = false;
+      selectedFrames = [];
+      frames.forEach(function (f) { setFrameHighlight(f, 'none'); });
       worldLayer.batchDraw();
     }
 
@@ -2561,6 +2519,7 @@
     function setFrameHighlight(frame, mode) {
       if (!frame.selectRing) return;
       var on = mode === 'active' || mode === 'selected';
+      showResizeHandles(frame, on);
       var col = mode === 'selected' ? themeToken('--guide') : themeToken('--artboard-active');
       frame.selectRing.stroke(col);
       frame.selectRing.shadowColor(col);
@@ -2586,6 +2545,200 @@
         frame.labelText.width(Math.max(20, frame.labelText.width() + (frame.approved ? -22 : 22)));
       }
       worldLayer.batchDraw();
+    }
+
+    var DISC_DESIGN = 32;   // design size the label-bar glyphs are drawn at
+    var HANDLE_SIZE = 14;   // canvas-px corner resize handles
+    var MIN_ARTBOARD = 48;  // canvas-px floor so an artboard can't vanish
+
+    // ---- Corner resize ----
+    // Four handles on the image corners. Dragging scales the image and its
+    // annotations together — the marks live in image space, so anything else
+    // would slide them off the features they point at. Proportional by default
+    // (distorting a photo in a review tool is rarely intended); hold Shift to
+    // stretch freely.
+    var CORNERS = [
+      { name: 'nw', fx: 0, fy: 0, cur: 'nwse-resize' },
+      { name: 'ne', fx: 1, fy: 0, cur: 'nesw-resize' },
+      { name: 'sw', fx: 0, fy: 1, cur: 'nesw-resize' },
+      { name: 'se', fx: 1, fy: 1, cur: 'nwse-resize' }
+    ];
+
+    function layoutResizeHandles(frame) {
+      if (!frame.resizeHandles) return;
+      var h = HANDLE_SIZE;
+      frame.resizeHandles.forEach(function (node, i) {
+        var c = CORNERS[i];
+        node.setAttrs({
+          x: c.fx * frame.imgW - h / 2,
+          y: c.fy * frame.imgH - h / 2,
+          width: h, height: h, cornerRadius: h / 2
+        });
+      });
+    }
+
+    function showResizeHandles(frame, on) {
+      if (!frame.resizeHandles) return;
+      frame.resizeHandles.forEach(function (n) { n.visible(on); });
+    }
+
+    function addResizeHandles(frame) {
+      if (readOnly || frame.resizeHandles) return;
+      frame.resizeHandles = CORNERS.map(function (c) {
+        var node = new Konva.Rect({
+          name: 'resize-' + c.name,
+          fill: themeToken('--artboard-glass'),
+          stroke: themeToken('--artboard-active'),
+          strokeWidth: 2,
+          visible: false
+        });
+        node.on('mouseenter', function () { stage.container().style.cursor = c.cur; });
+        node.on('mouseleave', function () { stage.container().style.cursor = ''; });
+        node.on('pointerdown', function (e) {
+          e.cancelBubble = true;
+          beginResize(frame, c, e);
+        });
+        node.on('dblclick dbltap', function (e) { e.cancelBubble = true; });
+        frame.artboardGroup.add(node);
+        return node;
+      });
+    }
+
+    var resizing = null;
+
+    function beginResize(frame, corner, e) {
+      var p = getCanvasPointer();
+      resizing = {
+        frame: frame, corner: corner,
+        startW: frame.imgW, startH: frame.imgH,
+        startX: frame.x || 0, startY: frame.y || 0,
+        // the corner diagonally opposite stays put
+        anchorX: (frame.x || 0) + (1 - corner.fx) * frame.imgW,
+        anchorY: (frame.y || 0) + (1 - corner.fy) * frame.imgH,
+        px: p.x, py: p.y,
+        // annotation geometry is captured once and rescaled from the original
+        // each move, so dragging back and forth can't accumulate drift
+        anns: (frame.liveAnnotations || []).map(function (a) {
+          return {
+            ann: a,
+            x: a.konvaGroup.x(), y: a.konvaGroup.y(),
+            lines: a.konvaGroup.find('Line').map(function (l) {
+              return { line: l, pts: l.points().slice(), w: l.strokeWidth() };
+            })
+          };
+        })
+      };
+      stage.draggable(false);
+    }
+
+    function applyResize(evt) {
+      if (!resizing) return;
+      var r = resizing, f = r.frame;
+      var p = getCanvasPointer();
+      var wSign = r.corner.fx ? 1 : -1, hSign = r.corner.fy ? 1 : -1;
+      var newW = Math.max(MIN_ARTBOARD, (p.x - r.anchorX) * wSign);
+      var newH = Math.max(MIN_ARTBOARD, (p.y - r.anchorY) * hSign);
+      var sx = newW / r.startW, sy = newH / r.startH;
+      if (!(evt && evt.shiftKey)) {                 // proportional unless Shift
+        var s = Math.max(sx, sy);
+        sx = s; sy = s;
+      }
+      f.imgW = Math.max(MIN_ARTBOARD, r.startW * sx);
+      f.imgH = Math.max(MIN_ARTBOARD, r.startH * sy);
+      f.x = r.corner.fx ? r.anchorX : r.anchorX - f.imgW;
+      f.y = r.corner.fy ? r.anchorY : r.anchorY - f.imgH;
+      f.artboardGroup.position({ x: f.x, y: f.y });
+
+      r.anns.forEach(function (a) {
+        a.ann.konvaGroup.position({ x: a.x * sx, y: a.y * sy });
+        a.lines.forEach(function (l) {
+          var out = l.pts.slice();
+          for (var i = 0; i < out.length; i += 2) { out[i] *= sx; out[i + 1] *= sy; }
+          l.line.points(out);
+          l.line.strokeWidth(l.w * Math.max(sx, sy));
+        });
+      });
+
+      layoutArtboard(f);
+      if (frames.indexOf(f) === activeFrameIndex) stagingLayer.position({ x: f.x, y: f.y });
+      worldLayer.batchDraw();
+    }
+
+    function endResize() {
+      if (!resizing) return;
+      var changed = resizing.frame.imgW !== resizing.startW || resizing.frame.imgH !== resizing.startH;
+      resizing = null;
+      if (currentTool === 'pan') stage.draggable(true);
+      if (changed) recordHistory();
+    }
+
+    stage.on('pointermove.resize', function (e) { if (resizing) applyResize(e.evt); });
+    stage.on('pointerup.resize', endResize);
+
+
+    // Label-bar metrics for a frame's current width. Narrow artboards shrink the
+    // control cluster so the discs never spill across the name.
+    function barMetrics(frame) {
+      var frameW = frame.imgW + ARTBOARD_FRAME_PAD * 2;
+      var PADX = 22, BTN = DISC_DESIGN, BGAP = 12;
+      if (!readOnly) {
+        var clusterW = 3 * BTN + 2 * BGAP + PADX;
+        var sc = Math.min(1, (frameW * 0.62) / clusterW);
+        if (sc < 1) { BTN = BTN * sc; BGAP = BGAP * sc; PADX = Math.max(6, PADX * sc); }
+      }
+      return {
+        PADX: PADX, BTN: BTN, BGAP: BGAP,
+        frameW: frameW,
+        barH: ARTBOARD_LABEL_HEIGHT - ARTBOARD_BAR_GAP,
+        controlsW: readOnly ? PADX : 3 * BTN + 2 * BGAP + PADX + BGAP
+      };
+    }
+
+    // Re-apply every piece of artboard geometry from the frame's current size.
+    // Called on mount and on every resize step, so the two can never drift.
+    function layoutArtboard(frame) {
+      if (!frame.artboardGroup) return;
+      var FP = ARTBOARD_FRAME_PAD, R = ARTBOARD_RADIUS;
+      var m = barMetrics(frame);
+      var frameW = m.frameW, barH = m.barH;
+      var frameH = frame.imgH + ARTBOARD_LABEL_HEIGHT + FP;
+
+      if (frame.imageNode) frame.imageNode.size({ width: frame.imgW, height: frame.imgH });
+      if (frame.outlineRect) frame.outlineRect.size({ width: frame.imgW, height: frame.imgH });
+      if (frame.frameGlass)
+        frame.frameGlass.setAttrs({ x: -FP, y: -ARTBOARD_LABEL_HEIGHT, width: frameW, height: frameH });
+      if (frame.frameHi)
+        frame.frameHi.points([-FP + R, -ARTBOARD_LABEL_HEIGHT + 0.75,
+                              -FP + frameW - R, -ARTBOARD_LABEL_HEIGHT + 0.75]);
+      if (frame.frameLo)
+        frame.frameLo.points([-FP + R, frame.imgH + FP - 0.75,
+                              -FP + frameW - R, frame.imgH + FP - 0.75]);
+      if (frame.labelRect)
+        frame.labelRect.setAttrs({ x: -FP, y: -ARTBOARD_LABEL_HEIGHT, width: frameW, height: barH });
+      if (frame.selectRing)
+        frame.selectRing.setAttrs({ x: -FP, y: -ARTBOARD_LABEL_HEIGHT, width: frameW, height: frameH });
+      if (frame.selectGloss)
+        frame.selectGloss.setAttrs({ x: -FP + 2.5, y: -ARTBOARD_LABEL_HEIGHT + 2.5,
+                                     width: frameW - 5, height: frameH - 5 });
+      if (frame.approveBadge)
+        frame.approveBadge.position({ x: -FP + m.PADX, y: -ARTBOARD_LABEL_HEIGHT + (barH - 18) / 2 });
+      if (frame.labelText)
+        frame.labelText.setAttrs({
+          x: -FP + m.PADX + (frame.approved ? 28 : 0),
+          y: -ARTBOARD_LABEL_HEIGHT + (barH - 15) / 2,
+          width: Math.max(20, frameW - m.PADX - m.controlsW)
+        });
+
+      var sc = m.BTN / DISC_DESIGN;
+      [frame.deleteIcon, frame.hideIcon, frame.approveIcon].forEach(function (g, slot) {
+        if (!g) return;
+        g.scale({ x: sc, y: sc });
+        g.position({
+          x: -FP + frameW - m.PADX - m.BTN - slot * (m.BTN + m.BGAP),
+          y: -ARTBOARD_LABEL_HEIGHT + (barH - m.BTN) / 2
+        });
+      });
+      layoutResizeHandles(frame);
     }
 
     function mountArtboard(frame) {
@@ -2648,16 +2801,8 @@
 
       // Reserve room for the right-side controls so the name never runs into
       // them; overlong names ellipsize.
-      var PADX = 22, BTN = 32, BGAP = 12;
-      // Narrow artboards: at full size three 32px discs need more width than a
-      // small frame has, and they would spill left across the name. Shrink the
-      // whole cluster so the controls never claim more than ~62% of the bar.
-      if (!readOnly) {
-        var clusterW = 3 * BTN + 2 * BGAP + PADX;
-        var sc = Math.min(1, (frameW * 0.62) / clusterW);
-        if (sc < 1) { BTN = BTN * sc; BGAP = BGAP * sc; PADX = Math.max(6, PADX * sc); }
-      }
-      var controlsW = readOnly ? PADX : 3 * BTN + 2 * BGAP + PADX + BGAP;
+      var m = barMetrics(frame);
+      var PADX = m.PADX, BTN = m.BTN, BGAP = m.BGAP, controlsW = m.controlsW;
       var lText = new Konva.Text({
         x: -FP + PADX, y: -ARTBOARD_LABEL_HEIGHT + (BAR_H - 15) / 2,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
@@ -2673,15 +2818,11 @@
       // Each icon sits in its own round glass disc, per the iOS reference: a
       // translucent fill with a specular top arc, so they read as raised
       // pills on the bar rather than bare glyphs.
-      var BPAD = (BAR_H - BTN) / 2;
       function labelIconButton(name, slot, onClick) {
-        // slot 0 is the rightmost; step by disc + gap, inset by the bar padding
-        var g = new Konva.Group({
-          name: name,
-          x: -FP + frameW - PADX - BTN - slot * (BTN + BGAP),
-          y: -ARTBOARD_LABEL_HEIGHT + BPAD
-        });
-        var r = BTN / 2;
+        // Geometry is authored at DISC_DESIGN and the group is scaled, so the
+        // narrow-bar clamp (and any later resize) is a single scale change.
+        var g = new Konva.Group({ name: name });
+        var r = DISC_DESIGN / 2;
         g.add(new Konva.Circle({
           name: 'discFill', x: r, y: r, radius: r,
           fill: themeToken('--artboard-disc'),
@@ -2726,7 +2867,7 @@
 
       if (!readOnly) {
         var stroke = themeToken('--artboard-label-txt');
-        var c = BTN / 2, gs = BTN / 32;   // glyphs are authored for a 32px disc
+        var c = DISC_DESIGN / 2;
 
         // X — delete (slot 0, right edge)
         var del = labelIconButton('frameDelete', 0, function () {
@@ -2742,9 +2883,9 @@
                   ' that will be removed with it. This cannot be undone.'
           }).then(function (ok) { if (ok) removeFrame(frames.indexOf(frame)); });
         });
-        var sx = 5.4 * gs;
-        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.9 * gs, lineCap: 'round' }));
-        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.9 * gs, lineCap: 'round' }));
+        var sx = 5.4;
+        del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.9, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + sx, c - sx, c - sx, c + sx], stroke: stroke, strokeWidth: 1.9, lineCap: 'round' }));
         frame.deleteIcon = del;
 
         // Eye — hide from the canvas and from any share (slot 1)
@@ -2753,9 +2894,9 @@
         });
         eye.add(new Konva.Path({
           data: 'M5.4 16 C9.4 10.4 22.6 10.4 26.6 16 C22.6 21.6 9.4 21.6 5.4 16 Z',
-          stroke: stroke, strokeWidth: 1.55 / gs, listening: false, scaleX: gs, scaleY: gs
+          stroke: stroke, strokeWidth: 1.55, listening: false
         }));
-        eye.add(new Konva.Circle({ x: c, y: c, radius: 3 * gs, stroke: stroke, strokeWidth: 1.55, listening: false }));
+        eye.add(new Konva.Circle({ x: c, y: c, radius: 3, stroke: stroke, strokeWidth: 1.55, listening: false }));
         frame.hideIcon = eye;
         eye.opacity(frame.hidden ? 0.45 : 1);
 
@@ -2763,8 +2904,8 @@
         var ok = labelIconButton('frameApprove', 2, function () {
           setFrameApproved(frame, !frame.approved);
         });
-        ok.add(new Konva.Line({ points: [10 * gs, 16.4 * gs, 14.2 * gs, 20.6 * gs, 22 * gs, 11.6 * gs],
-          stroke: stroke, strokeWidth: 2 * gs, lineCap: 'round', lineJoin: 'round', listening: false }));
+        ok.add(new Konva.Line({ points: [10, 16.4, 14.2, 20.6, 22, 11.6],
+          stroke: stroke, strokeWidth: 2, lineCap: 'round', lineJoin: 'round', listening: false }));
         frame.approveIcon = ok;
       }
 
@@ -2814,6 +2955,9 @@
       frame.outlineRect = outline;
       ag.add(outline);
 
+      addResizeHandles(frame);
+      layoutArtboard(frame);
+
       rebuildAnnotationsInArtboard(frame);
 
       var fi = frames.indexOf(frame);
@@ -2824,48 +2968,6 @@
       worldLayer.batchDraw();
 
       attachArtboardDragHandle(frame);
-    }
-
-    function unmountArtboard(frame) {
-      if (!frame.artboardGroup) return;
-      // Move imageNode back to worldLayer before destroying the group
-      if (frame.imageNode) {
-        frame.imageNode.off('click tap');
-        frame.imageNode.remove();
-        frame.imageNode.x(0); frame.imageNode.y(0);
-        worldLayer.add(frame.imageNode);
-        frame.imageNode.moveToBottom();
-      }
-      // Detach artboard drag events
-      stage.off('pointermove.abdrag' + frame.id);
-      stage.off('pointerup.abdrag' + frame.id);
-      frame.artboardGroup.destroy();
-      frame.artboardGroup = null;
-      frame.labelRect = null;
-      frame.labelText = null;
-      frame.outlineRect = null;
-      frame.deleteIcon = null;
-      frame.hideIcon = null;
-      frame.approveIcon = null;
-      frame.approveBadge = null;
-      frame.frameGlass = null;
-      frame.frameHi = null;
-      frame.frameLo = null;
-      frame.selectRing = null;
-      frame.selectGloss = null;
-      // Rebuild annotations directly in worldLayer
-      frame.liveAnnotations = [];
-      var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
-      snap.annotations.forEach(function(ad) {
-        var annGroup = new Konva.Group({ x: ad.x, y: ad.y, draggable: !readOnly && currentTool === 'pan' });
-        worldLayer.add(annGroup);
-        ad.strokes.forEach(function(sd) { annGroup.add(makeLine(sd, true)); });
-        var ann = { name: ad.name, color: ad.color, konvaGroup: annGroup, visible: ad.visible !== false, text: ad.text || '' };
-        annGroup.visible(ann.visible);
-        attachGroupHandlers(ann);
-        frame.liveAnnotations.push(ann);
-      });
-      worldLayer.batchDraw();
     }
 
     function rebuildAnnotationsInArtboard(frame) {
@@ -3092,6 +3194,7 @@
       imageNode = target.imageNode;
 
       // Highlight the whole active artboard
+      highlightActive = true;
       setFrameHighlight(target, 'active');
 
       // Offset stagingLayer to active artboard origin
@@ -3123,8 +3226,9 @@
 
     function getAnnotationContainer() {
       var f = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
-      if (f && f.artboardGroup) return f.artboardGroup;
-      return worldLayer;
+      // Every frame has an artboard now; worldLayer is only a fallback for the
+      // brief window before one is mounted.
+      return (f && f.artboardGroup) ? f.artboardGroup : worldLayer;
     }
 
     function autoPlaceFrames() {
@@ -3783,6 +3887,8 @@
         // Artboard position rides along in the snapshot so moving a board is
         // undoable like every other action.
         frameX: af ? (af.x || 0) : 0,
+        frameW: af ? af.imgW : 0,
+        frameH: af ? af.imgH : 0,
         frameY: af ? (af.y || 0) : 0,
         staging: stagingStrokes.map(strokeData),
         annotations: annotations.map(function (a) {
@@ -3821,6 +3927,14 @@
           af.artboardGroup.position({ x: af.x, y: af.y });
           stagingLayer.position({ x: af.x, y: af.y });
         }
+      }
+      // Size too — otherwise undoing a resize would restore the annotations at
+      // their old scale on a differently-sized image.
+      if (af && snap.frameW > 0 && snap.frameH > 0 &&
+          (af.imgW !== snap.frameW || af.imgH !== snap.frameH)) {
+        af.imgW = snap.frameW;
+        af.imgH = snap.frameH;
+        layoutArtboard(af);
       }
 
       var container = getAnnotationContainer();
@@ -4446,7 +4560,8 @@
             // viewer already reads it and falls back to "Frame N" without it.
             return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null,
                      annotations: f.snapshot, x: f.x || 0, y: f.y || 0,
-                     label: f.label || null, approved: !!f.approved };
+                     label: f.label || null, approved: !!f.approved,
+                     w: f.imgW, h: f.imgH };
           });
           return supaInsertSession({ id: projId, annotations: doc, image_path: shareFrames[0].imagePath });
         })
@@ -4499,14 +4614,13 @@
       // top of the very image you asked to focus on.
       var ins = chromeInsets(true);
       var gap = 24;
-      var hasChrome = frames.length > 1;
-      var pad = hasChrome ? ARTBOARD_FRAME_PAD : 0;
+      var pad = ARTBOARD_FRAME_PAD;
       // Frame the whole slab — mat and label bar included — or the glass edges
       // spill past the viewport that the insets just carved out.
       var left = frame.x - pad;
-      var top = frame.y - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
+      var top = frame.y - ARTBOARD_LABEL_HEIGHT;
       var w = frame.imgW + pad * 2;
-      var h = frame.imgH + pad + (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
+      var h = frame.imgH + pad + ARTBOARD_LABEL_HEIGHT;
       var availW = Math.max(40, stage.width() - ins.right - gap * 2);
       var availH = Math.max(40, stage.height() - ins.top - ins.bottom - gap * 2);
       var k = clamp(Math.min(availW / w, availH / h));
@@ -4534,6 +4648,14 @@
     // Any other view change makes the stored return-view stale; drop it so F
     // starts a fresh focus rather than jumping somewhere unexpected.
     stage.on('wheel dragend', function () { focusReturn = null; });
+
+    // Clicking empty canvas deselects. Draw mode is exempt — there a click on
+    // blank canvas is the start of a stroke, not a deselection.
+    stage.on('click tap', function (e) {
+      if (e.target !== stage) return;
+      if (currentTool === 'draw') return;
+      deselectAll();
+    });
 
     // ---- Confirm dialog ----
     // Resolves true/false. Keydown is captured and stopped while it's open, so
@@ -5011,6 +5133,8 @@
               y: (typeof el.y === 'number') ? el.y : null,
               label: el.label || null,
               approved: !!el.approved,
+              dispW: (typeof el.w === 'number' && el.w > 0) ? el.w : null,
+              dispH: (typeof el.h === 'number' && el.h > 0) ? el.h : null,
               artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
               liveAnnotations: []
             };
@@ -5036,12 +5160,7 @@
 
         showChrome();
 
-        if (frames.length === 1) {
-          // Single image: use legacy switchFrame path
-          return switchFrame(0);
-        }
-
-        // Multi-image artboard viewer: auto-place any frames missing positions, then hydrate all
+        // Same artboard path whatever the frame count
         autoPlaceFrames();
         var seqIdx = 0;
         function hydrateNext() {
