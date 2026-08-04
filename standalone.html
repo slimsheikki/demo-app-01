@@ -1442,6 +1442,11 @@
 
   <!-- Toolbar: pan / draw tool toggle -->
   <div id="toolbar">
+    <button class="tbtn" id="toolSelect" title="Select (V)" aria-label="Selection tool">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 3l12 9-5.2 1 3 6.2-2.6 1.2-3-6.2L6 18V3z" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
     <button class="tbtn active" id="toolPan" title="Pan" aria-label="Pan tool">
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M18 11V9a2 2 0 0 0-4 0v2m-4-4V5a2 2 0 0 0-4 0v9l-1.5-2.5a1.6 1.6 0 0 0-2.8 1.6l3 5.3A5 5 0 0 0 9 20h5a5 5 0 0 0 5-5v-4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -2256,6 +2261,109 @@
       return { x: 0, y: maxBottom + ARTBOARD_GAP };
     }
 
+    // ---- Selection tool (V) ----
+    // Drag on empty canvas to draw a marquee; every artboard it touches joins
+    // the selection (outlined in the guide colour). Dragging any selected
+    // artboard's image then moves the whole selection together.
+    var selectedFrames = [];
+
+    function setSelection(list) {
+      selectedFrames = list || [];
+      frames.forEach(function (f) {
+        if (!f.outlineRect) return;
+        var sel = selectedFrames.indexOf(f) !== -1;
+        f.outlineRect.stroke(sel ? themeToken('--guide') : themeToken('--artboard-outline'));
+        f.outlineRect.strokeWidth(sel ? 2 : 1);
+      });
+      worldLayer.batchDraw();
+    }
+
+    (function () {
+      var marquee = null, m0 = null;
+      var groupDrag = null;   // { start: {x,y}, frames: [{f, x0, y0}] }
+
+      function worldPointer() {
+        var p = stage.getPointerPosition();
+        var k = stage.scaleX();
+        return { x: (p.x - stage.x()) / k, y: (p.y - stage.y()) / k };
+      }
+
+      function frameOf(node) {
+        for (var i = 0; i < frames.length; i++) {
+          if (frames[i].artboardGroup && frames[i].artboardGroup.isAncestorOf(node)) return frames[i];
+          if (frames[i].imageNode === node) return frames[i];
+        }
+        return null;
+      }
+
+      stage.on('mousedown.seltool touchstart.seltool', function (e) {
+        if (currentTool !== 'select' || readOnly || !imageNode) return;
+        if (e.evt.button != null && e.evt.button !== 0) return;
+        var f = e.target === stage ? null : frameOf(e.target);
+        if (f) {
+          // Grab-to-move: an unselected artboard becomes the selection first.
+          if (selectedFrames.indexOf(f) === -1) setSelection([f]);
+          setActiveFrame(frames.indexOf(f));
+          groupDrag = {
+            start: worldPointer(),
+            frames: selectedFrames.map(function (sf) { return { f: sf, x0: sf.x || 0, y0: sf.y || 0 }; })
+          };
+        } else {
+          m0 = worldPointer();
+          marquee = new Konva.Rect({
+            x: m0.x, y: m0.y, width: 0, height: 0,
+            stroke: themeToken('--guide'), strokeWidth: 1 / stage.scaleX(),
+            dash: [4 / stage.scaleX(), 4 / stage.scaleX()],
+            fill: 'rgba(74,157,248,0.08)'
+          });
+          guideLayer.add(marquee);
+        }
+      });
+
+      stage.on('mousemove.seltool touchmove.seltool', function () {
+        if (currentTool !== 'select') return;
+        if (groupDrag) {
+          var wp = worldPointer();
+          var dx = wp.x - groupDrag.start.x, dy = wp.y - groupDrag.start.y;
+          groupDrag.frames.forEach(function (gf) {
+            gf.f.x = gf.x0 + dx; gf.f.y = gf.y0 + dy;
+            if (gf.f.artboardGroup) gf.f.artboardGroup.position({ x: gf.f.x, y: gf.f.y });
+          });
+          var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+          if (af) stagingLayer.position({ x: af.x || 0, y: af.y || 0 });
+          worldLayer.batchDraw();
+          return;
+        }
+        if (!marquee) return;
+        var wp2 = worldPointer();
+        marquee.setAttrs({
+          x: Math.min(m0.x, wp2.x), y: Math.min(m0.y, wp2.y),
+          width: Math.abs(wp2.x - m0.x), height: Math.abs(wp2.y - m0.y)
+        });
+        guideLayer.batchDraw();
+      });
+
+      stage.on('mouseup.seltool touchend.seltool', function () {
+        if (currentTool !== 'select') return;
+        if (groupDrag) {
+          var moved = groupDrag.frames.some(function (gf) { return gf.f.x !== gf.x0 || gf.f.y !== gf.y0; });
+          groupDrag = null;
+          if (moved) recordHistory();   // per-frame history: records the active frame
+          return;
+        }
+        if (!marquee) return;
+        var r = { x: marquee.x(), y: marquee.y(), w: marquee.width(), h: marquee.height() };
+        marquee.destroy(); marquee = null;
+        guideLayer.batchDraw();
+        var hits = frames.filter(function (f) {
+          return f.artboardGroup &&
+                 f.x < r.x + r.w && f.x + f.imgW > r.x &&
+                 f.y < r.y + r.h && f.y + f.imgH > r.y;
+        });
+        setSelection(hits);
+      });
+    })();
+
     // Hidden: shown at half opacity on the canvas and excluded from any share.
     function setFrameHidden(frame, hidden) {
       frame.hidden = !!hidden;
@@ -2514,6 +2622,7 @@
 
       lRect.on('pointerdown', function(e) {
         if (readOnly) return;
+        if (currentTool === 'select') return;   // the selection tool owns drags, incl. group moves
         setActiveFrame(frames.indexOf(frame));
         dragging = true;
         var cp = getCanvasPointer();
@@ -2726,19 +2835,23 @@
     // ---- Tool switching ----
     function setTool(tool) {
       if (readOnly) tool = 'pan';   // viewers can only pan/zoom
+      if (tool !== 'select') setSelection([]);
       currentTool = tool;
       if (isDrawing) { isDrawing = false; currentLine = null; }
+      ['toolSelect', 'toolPan', 'toolDraw'].forEach(function (id) {
+        document.getElementById(id).classList.remove('active');
+      });
+      stageEl.classList.remove('draw-mode', 'grabbable', 'grabbing');
       if (tool === 'pan') {
         stage.draggable(true);
-        stageEl.classList.remove('draw-mode');
         if (imageNode) stageEl.classList.add('grabbable');
         document.getElementById('toolPan').classList.add('active');
-        document.getElementById('toolDraw').classList.remove('active');
+      } else if (tool === 'select') {
+        stage.draggable(false);
+        document.getElementById('toolSelect').classList.add('active');
       } else {
         stage.draggable(false);
-        stageEl.classList.remove('grabbable', 'grabbing');
         stageEl.classList.add('draw-mode');
-        document.getElementById('toolPan').classList.remove('active');
         document.getElementById('toolDraw').classList.add('active');
       }
       // Keep annotation groups draggable only in pan mode (never for viewers)
@@ -3271,6 +3384,15 @@
     // ---- Toolbar buttons ----
     document.getElementById('toolPan').addEventListener('click', function () { setTool('pan'); });
     document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); });
+    document.getElementById('toolSelect').addEventListener('click', function () { setTool('select'); });
+
+    // V switches to the selection tool
+    window.addEventListener('keydown', function (e) {
+      if (e.code !== 'KeyV' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
+      e.preventDefault();
+      setTool('select');
+    });
 
     // ---- Commit / discard buttons ----
     document.getElementById('commitBtn').addEventListener('click', function () {
@@ -4092,6 +4214,11 @@
       if (e.key !== 'Escape' || readOnly) return;
       if (document.getElementById('shortcuts').classList.contains('show')) return;
       if (commentBox.classList.contains('show')) return;   // its own Esc handler discards the comment
+      if (currentTool === 'select' && selectedFrames.length) {
+        e.preventDefault();
+        setSelection([]);
+        return;
+      }
       if (!isDrawing && stagingStrokes.length === 0) return;
       e.preventDefault();
       discardStaging();
