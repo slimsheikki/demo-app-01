@@ -1562,6 +1562,44 @@
     var SUPA_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pYXRrZ29paXBvZmF6cGpkbGd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njg5NDcsImV4cCI6MjA5ODM0NDk0N30.i4SuxWJMr7kJ_7YI2G8ZSVx_gsh_NBiMn-LWnwXdwIU';
     var SUPA_BUCKET = 'shots';
     var MAX_UPLOAD_BYTES = 15 * 1024 * 1024;  // friendly guard before upload
+    // Must match MAX_AGE_HOURS in supabase/functions/cleanup-shares/index.ts —
+    // the Edge Function is what actually deletes them; this only reports it.
+    var SHARE_TTL_HOURS = 8;
+
+    // Milliseconds left before a share is swept, or null if created_at is unusable.
+    function shareRemainingMs(createdAt) {
+      var t = Date.parse(createdAt);
+      if (isNaN(t)) return null;
+      return t + SHARE_TTL_HOURS * 3600000 - Date.now();
+    }
+
+    // "7h 20m" / "45m". Null once nothing is left.
+    function formatRemaining(ms) {
+      if (ms == null || ms <= 0) return null;
+      var mins = Math.floor(ms / 60000);
+      var h = Math.floor(mins / 60), m = mins % 60;
+      if (h && m) return h + 'h ' + m + 'm';
+      if (h) return h + 'h';
+      return Math.max(1, m) + 'm';
+    }
+
+    // Replace the upload card with a terminal message. Viewers land on the drop
+    // card by default, which invites them to upload their own photo — exactly the
+    // wrong thing to offer someone who followed a share link that no longer works.
+    function showViewerNotice(title, body) {
+      var card = document.getElementById('card');
+      var drop = document.getElementById('drop');
+      if (!card || !drop) return;
+      drop.classList.remove('hide');
+      card.innerHTML =
+        '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="9"/>' +
+        '<path d="M12 7.5v5" stroke-linecap="round"/><path d="M12 16.2v.4" stroke-linecap="round"/>' +
+        '</svg>' +
+        '<div><h1></h1><p></p></div>';
+      card.querySelector('h1').textContent = title;
+      card.querySelector('p').textContent = body;
+    }
     function shareEnabled() { return !!(SUPA_URL && SUPA_KEY); }
 
     // ---- Elements ----
@@ -3727,8 +3765,12 @@
         .then(function () {
           shareId = projId; projectId = projId;
           var link = location.origin + location.pathname + '?s=' + projId;
+          // State the lifetime up front — it was previously invisible, so a link
+          // could quietly stop working with nothing having said it would.
+          var ttl = ' · expires in ' + SHARE_TTL_HOURS + 'h';
           return copyToClipboard(link).then(function (ok) {
-            showToast(ok ? 'Share link copied to clipboard ✓' : 'Share link: ' + link, true);
+            showToast(ok ? 'Share link copied to clipboard ✓' + ttl
+                         : 'Share link: ' + link + ttl, true);
           });
         })
         .catch(function (err) {
@@ -3940,7 +3982,20 @@
       }
       showToast('Loading shared annotations…', true);
       supaGetSession(sid).then(function (row) {
-        if (!row) { showError('That share link wasn’t found or has expired.'); return; }
+        if (!row) {
+          showViewerNotice('This review has expired',
+            'Shared reviews are deleted automatically after ' + SHARE_TTL_HOURS +
+            ' hours. Ask whoever sent this link to share it again.');
+          return;
+        }
+        // The row can still be present between expiry and the hourly sweep.
+        var leftMs = shareRemainingMs(row.created_at);
+        if (leftMs != null && leftMs <= 0) {
+          showViewerNotice('This review has expired',
+            'Shared reviews are deleted automatically after ' + SHARE_TTL_HOURS +
+            ' hours. Ask whoever sent this link to share it again.');
+          return;
+        }
         readOnly = true;
         shareId = sid; projectId = sid;
         document.body.classList.add('read-only');
@@ -3974,6 +4029,11 @@
           }];
         }
         if (!frames.length) { showError('This shared project has no images.'); return; }
+
+        // Tell the viewer how long they have; the link dying silently is worse
+        // than the deadline itself.
+        var left = formatRemaining(leftMs);
+        if (left) showToast('Shared review · expires in ' + left, true);
 
         showChrome();
 
