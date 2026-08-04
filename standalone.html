@@ -1600,6 +1600,11 @@
       <div class="sc-row"><span>Brush smaller / bigger</span><kbd>Q / E</kbd></div>
       <div class="sc-row"><span>Cancel drawing or selection</span><kbd>Esc</kbd></div>
       <div class="sc-row"><span>Rename artboard</span><kbd>Double-click name</kbd></div>
+      <div class="sc-row"><span>Select all artboards</span><kbd>Ctrl / Cmd + A</kbd></div>
+      <div class="sc-row"><span>Arrange in a row</span><kbd>1</kbd></div>
+      <div class="sc-row"><span>Arrange in a column</span><kbd>2</kbd></div>
+      <div class="sc-row"><span>Copy image</span><kbd>Ctrl / Cmd + C</kbd></div>
+      <div class="sc-row"><span>Paste images</span><kbd>Ctrl / Cmd + V</kbd></div>
       <div class="sc-row"><span>Undo</span><kbd>Ctrl / Cmd + Z</kbd></div>
       <div class="sc-row"><span>Redo</span><kbd>Ctrl / Cmd + Shift + Z</kbd></div>
       <div class="sc-row"><span>Confirm comment</span><kbd>Ctrl / Cmd + Enter</kbd></div>
@@ -4232,6 +4237,107 @@
     // Any other view change makes the stored return-view stale; drop it so F
     // starts a fresh focus rather than jumping somewhere unexpected.
     stage.on('wheel dragend', function () { focusReturn = null; });
+
+    // ---- Select all / arrange / clipboard ----
+
+    // Lay the artboards back out in one row (axis 'x') or one column ('y'),
+    // using the same gap the default grid uses. Applies to the current
+    // selection when there is one, otherwise to every artboard; relative order
+    // follows their current positions so nothing jumps across the layout.
+    function arrangeFrames(axis) {
+      var targets = (selectedFrames.length > 1 ? selectedFrames : frames)
+        .filter(function (f) { return f.artboardGroup; });
+      if (targets.length < 2) return;
+      targets = targets.slice().sort(function (a, b) {
+        return axis === 'x' ? (a.x - b.x || a.y - b.y) : (a.y - b.y || a.x - b.x);
+      });
+      var x0 = Math.min.apply(null, targets.map(function (f) { return f.x; }));
+      var y0 = Math.min.apply(null, targets.map(function (f) { return f.y; }));
+      var cursor = axis === 'x' ? x0 : y0;
+      targets.forEach(function (f) {
+        if (axis === 'x') { f.x = cursor; f.y = y0; cursor += f.imgW + ARTBOARD_GAP; }
+        else { f.y = cursor; f.x = x0; cursor += f.imgH + ARTBOARD_LABEL_HEIGHT + ARTBOARD_GAP; }
+        f.artboardGroup.position({ x: f.x, y: f.y });
+      });
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (af) stagingLayer.position({ x: af.x || 0, y: af.y || 0 });
+      worldLayer.batchDraw();
+      recordHistory();   // per-frame history: records the active frame
+      fitAll();
+    }
+
+    function selectAllFrames() {
+      var all = frames.filter(function (f) { return f.artboardGroup; });
+      if (!all.length) return;
+      setTool('select');
+      setSelection(all);
+    }
+
+    // Copy the active artboard's image to the system clipboard as a PNG.
+    // The original bitmap is copied — annotations stay in the review.
+    function copyActiveImage() {
+      var frame = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (!frame || !frame.image) return;
+      if (!navigator.clipboard || !window.ClipboardItem) {
+        showError('Copying images needs a browser with clipboard support (and HTTPS).');
+        return;
+      }
+      var c = document.createElement('canvas');
+      c.width = frame.imgW; c.height = frame.imgH;
+      c.getContext('2d').drawImage(frame.image, 0, 0);
+      c.toBlob(function (blob) {
+        if (!blob) { showError('Couldn\u2019t encode the image.'); return; }
+        navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+          .then(function () { showToast('Image copied to clipboard \u2713', true); })
+          .catch(function () { showError('The browser blocked the clipboard write.'); });
+      }, 'image/png');
+    }
+
+    window.addEventListener('keydown', function (e) {
+      if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
+      var mod = e.ctrlKey || e.metaKey;
+      // Cmd/Ctrl+1 / +2 arrange; browsers reserve Cmd+1 for tab switching on
+      // macOS, so plain 1 / 2 do the same thing as a fallback.
+      if ((e.code === 'Digit1' && (mod || !e.altKey)) && !e.shiftKey) {
+        if (mod) e.preventDefault();
+        arrangeFrames('x');
+        return;
+      }
+      if ((e.code === 'Digit2' && (mod || !e.altKey)) && !e.shiftKey) {
+        if (mod) e.preventDefault();
+        arrangeFrames('y');
+        return;
+      }
+      if (!mod) return;
+      if (e.code === 'KeyA' && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        selectAllFrames();
+      } else if (e.code === 'KeyC' && !e.shiftKey && !e.altKey) {
+        // leave real text-selection copies alone
+        if (String(window.getSelection && window.getSelection())) return;
+        e.preventDefault();
+        copyActiveImage();
+      }
+    });
+
+    // Cmd/Ctrl+V — paste images from anywhere (a screenshot, Finder, another
+    // app). The native paste event carries the files; addFrames() does the rest.
+    window.addEventListener('paste', function (e) {
+      if (readOnly || isTypingTarget(document.activeElement)) return;
+      if (!e.clipboardData) return;
+      var files = [];
+      for (var i = 0; i < e.clipboardData.items.length; i++) {
+        var it = e.clipboardData.items[i];
+        if (it.kind === 'file' && it.type.indexOf('image/') === 0) {
+          var f = it.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (!files.length) return;
+      e.preventDefault();
+      addFrames(files);
+      showToast(files.length === 1 ? 'Image pasted' : files.length + ' images pasted', true);
+    });
 
     // ---- A toggles approval of the active artboard ----
     window.addEventListener('keydown', function (e) {
