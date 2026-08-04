@@ -2032,17 +2032,36 @@
     // bottom zoom bar are horizontally centered, so they only constrain the
     // image vertically — reserve their height so the image stays fully visible
     // between them instead of slipping underneath.
+    // Screen-space margins the floating chrome occupies, so the canvas can be
+    // framed in the space that's actually visible rather than the whole stage.
+    // includeRail also reserves the right-hand colour-picker/layers column —
+    // wanted when framing a single artboard, but not for the overall fit, whose
+    // top/bottom bars are centred and so only constrain vertically.
+    function chromeInsets(includeRail) {
+      var gap = 14;
+      var ins = { top: 0, bottom: 0, right: 0 };
+      if (toolbar.classList.contains('show')) {
+        ins.top = toolbar.getBoundingClientRect().bottom + gap;
+      }
+      if (controls.classList.contains('show')) {
+        ins.bottom = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
+      }
+      if (includeRail && !isMobileLayout) {
+        var cp = document.getElementById('colorPicker');
+        [cp, layersPanel].forEach(function (el) {
+          if (!el || !el.offsetParent) return;             // hidden -> no inset
+          var r = el.getBoundingClientRect();
+          if (r.width) ins.right = Math.max(ins.right, window.innerWidth - r.left + gap);
+        });
+      }
+      return ins;
+    }
+
     function fitAll() {
       if (!frames.length) return;
       var sw = stage.width(), sh = stage.height();
-      var gap = 14;
-      var topInset = 0, bottomInset = 0;
-      if (toolbar.classList.contains('show')) {
-        topInset = toolbar.getBoundingClientRect().bottom + gap;
-      }
-      if (controls.classList.contains('show')) {
-        bottomInset = (window.innerHeight - controls.getBoundingClientRect().top) + gap;
-      }
+      var ins = chromeInsets(false);
+      var topInset = ins.top, bottomInset = ins.bottom;
 
       var hasChrome = frames.length > 1;
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -4207,16 +4226,21 @@
     }
 
     function focusFrameView(frame) {
-      var gap = 60;
+      // Frame inside the space the chrome leaves free, not the whole stage —
+      // otherwise the toolbar, the control dock and the right-hand rail sit on
+      // top of the very image you asked to focus on.
+      var ins = chromeInsets(true);
+      var gap = 24;
       var hasChrome = frames.length > 1;
       var top = frame.y - (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
       var h = frame.imgH + (hasChrome ? ARTBOARD_LABEL_HEIGHT : 0);
-      var k = clamp(Math.min((stage.width() - gap * 2) / frame.imgW,
-                             (stage.height() - gap * 2) / h));
+      var availW = Math.max(40, stage.width() - ins.right - gap * 2);
+      var availH = Math.max(40, stage.height() - ins.top - ins.bottom - gap * 2);
+      var k = clamp(Math.min(availW / frame.imgW, availH / h));
       return {
         k: k,
-        x: (stage.width() - frame.imgW * k) / 2 - frame.x * k,
-        y: (stage.height() - h * k) / 2 - top * k
+        x: gap + (availW - frame.imgW * k) / 2 - frame.x * k,
+        y: ins.top + gap + (availH - h * k) / 2 - top * k
       };
     }
 
