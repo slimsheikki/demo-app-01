@@ -4,11 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Markup — Image Review</title>
+<script>
+  // Resolve the theme before the stylesheet is parsed, so the first paint is
+  // already correct — otherwise a light-mode user sees a dark flash on load.
+  // Saved choice wins; otherwise follow the OS.
+  (function () {
+    var t;
+    try { t = localStorage.getItem('markup-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root {
+    color-scheme: dark;
+
     /* ---------- Surfaces ---------- */
-    --ground:            #2b2b2e;
-    --ground-2:          #232326;
+    /* Flat and fully desaturated: a gradient or a colour cast in the surround
+       shifts how you judge tone and colour in the photograph sitting on it. */
+    --ground:            #2b2b2b;
     --panel-bg:          rgba(22, 22, 28, 0.85);
     --panel-bg-soft:     rgba(22, 22, 28, 0.78);
     --panel-bg-alt:      rgba(24, 24, 30, 0.82);
@@ -95,12 +111,17 @@
     --commit-red-border:   rgba(255, 95, 95, 0.38);
     --commit-red-txt:      #ff7070;
 
-    /* ---------- Silver button (loses the metal treatment in the light theme) ---------- */
-    --silver-txt:          #2a2a2e;
-    --silver-grad:         linear-gradient(180deg, #fdfdfd 0%, #e7e7ea 48%, #c9c9cf 100%);
-    --silver-inset-top:    rgba(255, 255, 255, 0.90);
-    --silver-inset-bot:    rgba(0, 0, 0, 0.06);
-    --silver-inset-active: rgba(255, 255, 255, 0.60);
+    /* ---------- Primary button ---------- */
+    /* Flat high-contrast against the surround, in place of the old brushed-metal
+       gradient — which had no light-theme equivalent (silver on white vanishes). */
+    --btn-bg:            #ededf0;
+    --btn-txt:           #1c1c1e;
+
+    /* ---------- Canvas-drawn artboard chrome (Konva, read via getComputedStyle) ---------- */
+    --artboard-label-bg:  rgba(255, 255, 255, 0.07);
+    --artboard-label-txt: rgba(255, 255, 255, 0.60);
+    --artboard-outline:   rgba(255, 255, 255, 0.12);
+    --artboard-active:    rgba(255, 255, 255, 0.45);
 
     /* ---------- Blur recipes ---------- */
     --blur-sm:           blur(8px);
@@ -127,6 +148,102 @@
     --dur-3:             .25s;
   }
 
+  /* ---------------------------------------------------------------------------
+     Light theme. Only colour tokens are overridden — geometry, type and motion
+     are shared. The core inversion: on a dark surround, "raised" reads as a
+     white wash; on a light one it reads as a black wash. Anything that was
+     white-alpha for depth becomes black-alpha here, not merely paler.
+     --------------------------------------------------------------------------- */
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --ground:            #e9e9e9;
+    --panel-bg:          rgba(252, 252, 253, 0.88);
+    --panel-bg-soft:     rgba(252, 252, 253, 0.82);
+    --panel-bg-alt:      rgba(255, 255, 255, 0.88);
+    --glass-bg:          rgba(255, 255, 255, 0.66);
+    --glass-bg-hover:    rgba(0, 0, 0, 0.06);
+
+    --hover-bg:          rgba(0, 0, 0, 0.06);
+    --press-bg:          rgba(0, 0, 0, 0.10);
+    --active-bg:         rgba(0, 0, 0, 0.08);
+    --row-hover:         rgba(0, 0, 0, 0.03);
+    --name-hover:        rgba(0, 0, 0, 0.05);
+
+    --glass-border:        rgba(0, 0, 0, 0.12);
+    --glass-border-active: rgba(0, 0, 0, 0.38);
+    --divider:             rgba(0, 0, 0, 0.08);
+    --divider-soft:        rgba(0, 0, 0, 0.06);
+    --dock-border:         rgba(0, 0, 0, 0.18);
+    --commit-border:       rgba(0, 0, 0, 0.12);
+    --swatch-border:       rgba(0, 0, 0, 0.15);
+    --swatch-border-soft:  rgba(0, 0, 0, 0.18);
+    --swatch-border-hover: rgba(0, 0, 0, 0.45);
+
+    /* Inverted: a white inset highlight is invisible on a white panel. */
+    --edge-1:            rgba(0, 0, 0, 0.020);
+    --edge-2:            rgba(0, 0, 0, 0.025);
+    --edge-3:            rgba(0, 0, 0, 0.030);
+    --edge-4:            rgba(0, 0, 0, 0.040);
+    --edge-5:            rgba(0, 0, 0, 0.050);
+    --edge-6:            rgba(0, 0, 0, 0.060);
+
+    --well-bg:           rgba(0, 0, 0, 0.040);
+    --well-bg-soft:      rgba(0, 0, 0, 0.035);
+    --well-bg-focus:     rgba(0, 0, 0, 0.060);
+    --well-border:       rgba(0, 0, 0, 0.12);
+    --well-border-2:     rgba(0, 0, 0, 0.13);
+    --well-border-focus: rgba(0, 0, 0, 0.32);
+
+    --txt:               rgba(0, 0, 0, 0.88);
+    --txt-dim:           rgba(0, 0, 0, 0.50);
+    --txt-faint:         rgba(0, 0, 0, 0.32);
+    --txt-strong:        #000;
+
+    --track-bg:          rgba(0, 0, 0, 0.14);
+    --badge-bg:          #1c1c1e;
+    --badge-txt:         #fff;
+
+    /* Far lighter: a dark-theme shadow alpha on a light surface reads as dirt. */
+    --sh-1:              rgba(0, 0, 0, 0.06);
+    --sh-2:              rgba(0, 0, 0, 0.07);
+    --sh-3:              rgba(0, 0, 0, 0.08);
+    --sh-4:              rgba(0, 0, 0, 0.10);
+    --sh-5:              rgba(0, 0, 0, 0.12);
+    --sh-6:              rgba(0, 0, 0, 0.14);
+    --sh-7:              rgba(0, 0, 0, 0.16);
+
+    --compare-line:      rgba(0, 0, 0, 0.72);
+    --cmp-label-bg:      rgba(255, 255, 255, 0.88);
+    --cmp-label-txt:     rgba(0, 0, 0, 0.85);
+    --scrim:             rgba(0, 0, 0, 0.28);
+
+    --accent-glow:       rgba(60, 130, 220, 0.30);
+    --danger:            #cf2f2f;
+    --danger-wash:       rgba(207, 47, 47, 0.10);
+    --danger-wash-soft:  rgba(207, 47, 47, 0.07);
+    --toast-err-bg:      rgba(253, 241, 241, 0.94);
+    --toast-err-border:  rgba(207, 47, 47, 0.35);
+    --toast-err-txt:     #8c1d1d;
+    --toast-ok-bg:       rgba(238, 250, 241, 0.94);
+    --toast-ok-border:   rgba(34, 150, 70, 0.35);
+    --toast-ok-txt:      #17632f;
+    --commit-green-bg:     rgba(40, 180, 95, 0.14);
+    --commit-green-border: rgba(30, 160, 80, 0.45);
+    --commit-green-txt:    #12813f;
+    --commit-red-bg:       rgba(207, 47, 47, 0.10);
+    --commit-red-border:   rgba(207, 47, 47, 0.40);
+    --commit-red-txt:      #b32020;
+
+    --btn-bg:            #1c1c1e;
+    --btn-txt:           #fafafa;
+
+    --artboard-label-bg:  rgba(0, 0, 0, 0.05);
+    --artboard-label-txt: rgba(0, 0, 0, 0.55);
+    --artboard-outline:   rgba(0, 0, 0, 0.14);
+    --artboard-active:    rgba(0, 0, 0, 0.42);
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   html, body {
@@ -134,8 +251,7 @@
     height: 100vh;        /* fallback */
     height: 100dvh;       /* modern, handles mobile browser chrome */
     overflow: hidden;
-    background:
-      radial-gradient(120% 120% at 50% 0%, var(--ground) 0%, var(--ground-2) 100%);
+    background: var(--ground);
     color: var(--txt);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -212,27 +328,24 @@
     max-width: 32ch;
   }
 
-  /* ---- Silver button ---- */
+  /* ---- Primary button ---- */
   .btn-silver {
     appearance: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--fs-md);
     font-weight: 600;
     letter-spacing: 0.01em;
-    color: var(--silver-txt);
+    color: var(--btn-txt);
     padding: 12px 30px;
     border-radius: 13px;
-    background: var(--silver-grad);
-    box-shadow:
-      0 1px 0 var(--silver-inset-top) inset,
-      0 -1px 0 var(--silver-inset-bot) inset,
-      0 6px 18px var(--sh-3);
-    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    background: var(--btn-bg);
+    box-shadow: 0 6px 18px var(--sh-3);
+    transition: transform var(--dur-1) ease, box-shadow var(--dur-1) ease, filter var(--dur-1) ease;
   }
   .btn-silver:hover { filter: brightness(1.04); transform: translateY(-1px); }
   .btn-silver:active { transform: translateY(0); filter: brightness(0.97);
-    box-shadow: 0 1px 0 var(--silver-inset-active) inset, 0 2px 8px var(--sh-2); }
+    box-shadow: 0 2px 8px var(--sh-2); }
 
   .hint {
     font-size: 11.5px;
@@ -1527,6 +1640,31 @@
       } catch (e) { return Promise.resolve(false); }
     }
 
+    // ---- Theme ----
+    // Artboard chrome is drawn by Konva onto the canvas, so it can't inherit from
+    // CSS. Read the same tokens the stylesheet uses and push them onto the nodes,
+    // so canvas and DOM never disagree about the theme.
+    function themeToken(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function applyThemeToCanvas() {
+      var labelBg = themeToken('--artboard-label-bg');
+      var labelTxt = themeToken('--artboard-label-txt');
+      var outline = themeToken('--artboard-outline');
+      var active = themeToken('--artboard-active');
+      frames.forEach(function (f, i) {
+        if (f.labelRect) {
+          f.labelRect.fill(labelBg);
+          // Only the active artboard carries the highlight stroke.
+          if (f.labelRect.stroke()) f.labelRect.stroke(active);
+        }
+        if (f.labelText) f.labelText.fill(labelTxt);
+        if (f.outlineRect) f.outlineRect.stroke(outline);
+      });
+      if (typeof worldLayer !== 'undefined' && worldLayer) worldLayer.batchDraw();
+    }
+
     // Width of the right-hand rail (colour picker + layers panel), read from the
     // --rail-w token so the value lives in exactly one place.
     function railWidth() {
@@ -1915,7 +2053,7 @@
       var lRect = new Konva.Rect({
         x: 0, y: -ARTBOARD_LABEL_HEIGHT,
         width: frame.imgW, height: ARTBOARD_LABEL_HEIGHT,
-        fill: 'rgba(255,255,255,0.07)', cornerRadius: [4, 4, 0, 0]
+        fill: themeToken('--artboard-label-bg'), cornerRadius: [4, 4, 0, 0]
       });
       frame.labelRect = lRect;
       ag.add(lRect);
@@ -1923,7 +2061,7 @@
       var lText = new Konva.Text({
         x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
-        fontSize: 12, fill: 'rgba(255,255,255,0.6)', listening: false
+        fontSize: 12, fill: themeToken('--artboard-label-txt'), listening: false
       });
       frame.labelText = lText;
       ag.add(lText);
@@ -1941,8 +2079,9 @@
 
       var outline = new Konva.Rect({
         x: 0, y: 0, width: frame.imgW, height: frame.imgH,
-        stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1, listening: false
+        stroke: themeToken('--artboard-outline'), strokeWidth: 1, listening: false
       });
+      frame.outlineRect = outline;
       ag.add(outline);
 
       rebuildAnnotationsInArtboard(frame);
@@ -1974,6 +2113,7 @@
       frame.artboardGroup = null;
       frame.labelRect = null;
       frame.labelText = null;
+      frame.outlineRect = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -2110,7 +2250,7 @@
       imageNode = target.imageNode;
 
       // Highlight active artboard label
-      if (target.labelRect) target.labelRect.stroke('rgba(255,255,255,0.45)');
+      if (target.labelRect) target.labelRect.stroke(themeToken('--artboard-active'));
 
       // Offset stagingLayer to active artboard origin
       stagingLayer.position({ x: target.x || 0, y: target.y || 0 });
