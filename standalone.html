@@ -2438,6 +2438,9 @@
           stagingLayer.position({ x: frame.x || 0, y: frame.y || 0 });
         }
         worldLayer.batchDraw();
+        // Only record when it actually moved, so a click on the label bar to
+        // activate a board doesn't push a no-op onto the undo stack.
+        if (frame.x !== startFX || frame.y !== startFY) recordHistory();
       });
     }
 
@@ -3169,8 +3172,13 @@
     }
 
     function snapshotState() {
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
       return {
         annotationCount: annotationCount,
+        // Artboard position rides along in the snapshot so moving a board is
+        // undoable like every other action.
+        frameX: af ? (af.x || 0) : 0,
+        frameY: af ? (af.y || 0) : 0,
         staging: stagingStrokes.map(strokeData),
         annotations: annotations.map(function (a) {
           var strokes = [];
@@ -3197,6 +3205,18 @@
       stagingLayer.destroyChildren();
       stagingStrokes = [];
       editingAnnotation = null;
+
+      // Put the artboard back where the snapshot had it, before annotations are
+      // rebuilt into it. Older snapshots predate these fields and simply skip this.
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (af && typeof snap.frameX === 'number' && typeof snap.frameY === 'number') {
+        af.x = snap.frameX;
+        af.y = snap.frameY;
+        if (af.artboardGroup) {
+          af.artboardGroup.position({ x: af.x, y: af.y });
+          stagingLayer.position({ x: af.x, y: af.y });
+        }
+      }
 
       var container = getAnnotationContainer();
 
@@ -3804,7 +3824,11 @@
       uploadNext()
         .then(function () {
           var doc = frames.map(function (f) {
-            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot, x: f.x || 0, y: f.y || 0 };
+            // label is persisted so viewers see the artboard's real name; the
+            // viewer already reads it and falls back to "Frame N" without it.
+            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null,
+                     annotations: f.snapshot, x: f.x || 0, y: f.y || 0,
+                     label: f.label || null };
           });
           return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
         })
