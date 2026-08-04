@@ -4,14 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Markup — Image Review</title>
+<script>
+  // Resolve the theme before the stylesheet is parsed, so the first paint is
+  // already correct — otherwise a light-mode user sees a dark flash on load.
+  // Saved choice wins; otherwise follow the OS.
+  (function () {
+    var t;
+    try { t = localStorage.getItem('markup-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      t = (window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root {
+    color-scheme: dark;
+
     /* ---------- Surfaces ---------- */
-    --ground:            #2b2b2e;
-    --ground-2:          #232326;
+    /* Flat and fully desaturated: a gradient or a colour cast in the surround
+       shifts how you judge tone and colour in the photograph sitting on it. */
+    --ground:            #2b2b2b;
     --panel-bg:          rgba(22, 22, 28, 0.85);
-    --panel-bg-soft:     rgba(22, 22, 28, 0.78);
-    --panel-bg-alt:      rgba(24, 24, 30, 0.82);
     --glass-bg:          rgba(255, 255, 255, 0.06);
     --glass-bg-hover:    rgba(255, 255, 255, 0.10);
 
@@ -78,7 +92,6 @@
     --scrim:             rgba(0, 0, 0, 0.45);
 
     /* ---------- Semantic ---------- */
-    --accent-glow:       rgba(120, 180, 255, 0.35);
     --danger:            #ff6b6b;
     --danger-wash:       rgba(255, 107, 107, 0.16);
     --danger-wash-soft:  rgba(255, 107, 107, 0.10);
@@ -95,26 +108,38 @@
     --commit-red-border:   rgba(255, 95, 95, 0.38);
     --commit-red-txt:      #ff7070;
 
-    /* ---------- Silver button (loses the metal treatment in the light theme) ---------- */
-    --silver-txt:          #2a2a2e;
-    --silver-grad:         linear-gradient(180deg, #fdfdfd 0%, #e7e7ea 48%, #c9c9cf 100%);
-    --silver-inset-top:    rgba(255, 255, 255, 0.90);
-    --silver-inset-bot:    rgba(0, 0, 0, 0.06);
-    --silver-inset-active: rgba(255, 255, 255, 0.60);
+    /* ---------- Primary button ---------- */
+    /* Flat high-contrast against the surround, in place of the old brushed-metal
+       gradient — which had no light-theme equivalent (silver on white vanishes). */
+    --btn-bg:            #ededf0;
+    --btn-txt:           #1c1c1e;
 
-    /* ---------- Blur recipes ---------- */
+    /* ---------- Canvas-drawn artboard chrome (Konva, read via getComputedStyle) ---------- */
+    --artboard-label-bg:  rgba(255, 255, 255, 0.07);
+    --artboard-label-txt: rgba(255, 255, 255, 0.60);
+    --artboard-outline:   rgba(255, 255, 255, 0.12);
+    --artboard-active:    rgba(255, 255, 255, 0.45);
+
+    /* ---------- Blur ----------
+       One recipe for every panel, and no saturate(). Saturation on a
+       translucent panel shifts the apparent colour of the photograph beneath
+       and beside it, which a colour-review tool must not do. */
     --blur-sm:           blur(8px);
-    --blur-toast:        blur(12px);
-    --blur-md:           blur(16px) saturate(140%);
-    --blur-lg:           blur(20px) saturate(140%);
-    --blur-card:         blur(22px) saturate(140%);
-    --blur-xl:           blur(24px) saturate(140%);
+    --blur-panel:        blur(12px);
 
     /* ---------- Geometry ---------- */
     --rail-w:            220px;
+    /* Vertical space the top-right utility bar reserves. Everything anchored to
+       that corner (colour picker, layers panel, mobile colour bar) offsets by it,
+       so the switch always owns the corner outright. */
+    --util-h:            40px;
+
+    /* ---------- Theme switch ---------- */
+    --knob-bg:           #f0f0f2;
+    --knob-icon:         #1c1c1e;
+    --focus-ring:        rgba(255, 255, 255, 0.65);
 
     /* ---------- Type scale ---------- */
-    --fs-eyebrow-sm:     10px;
     --fs-eyebrow:        10.5px;
     --fs-xs:             11px;
     --fs-sm:             12.5px;
@@ -127,6 +152,128 @@
     --dur-3:             .25s;
   }
 
+  /* ---------------------------------------------------------------------------
+     Light theme. Only colour tokens are overridden — geometry, type and motion
+     are shared. The core inversion: on a dark surround, "raised" reads as a
+     white wash; on a light one it reads as a black wash. Anything that was
+     white-alpha for depth becomes black-alpha here, not merely paler.
+     --------------------------------------------------------------------------- */
+  :root[data-theme="light"] {
+    color-scheme: light;
+
+    --ground:            #e9e9e9;
+    --panel-bg:          rgba(252, 252, 253, 0.88);
+    --glass-bg:          rgba(255, 255, 255, 0.66);
+    --glass-bg-hover:    rgba(0, 0, 0, 0.06);
+
+    --hover-bg:          rgba(0, 0, 0, 0.06);
+    --press-bg:          rgba(0, 0, 0, 0.10);
+    --active-bg:         rgba(0, 0, 0, 0.08);
+    --row-hover:         rgba(0, 0, 0, 0.03);
+    --name-hover:        rgba(0, 0, 0, 0.05);
+
+    --glass-border:        rgba(0, 0, 0, 0.12);
+    --glass-border-active: rgba(0, 0, 0, 0.38);
+    --divider:             rgba(0, 0, 0, 0.08);
+    --divider-soft:        rgba(0, 0, 0, 0.06);
+    --dock-border:         rgba(0, 0, 0, 0.18);
+    --commit-border:       rgba(0, 0, 0, 0.12);
+    --swatch-border:       rgba(0, 0, 0, 0.15);
+    --swatch-border-soft:  rgba(0, 0, 0, 0.18);
+    --swatch-border-hover: rgba(0, 0, 0, 0.45);
+
+    /* Inverted: a white inset highlight is invisible on a white panel. */
+    --edge-1:            rgba(0, 0, 0, 0.020);
+    --edge-2:            rgba(0, 0, 0, 0.025);
+    --edge-3:            rgba(0, 0, 0, 0.030);
+    --edge-4:            rgba(0, 0, 0, 0.040);
+    --edge-5:            rgba(0, 0, 0, 0.050);
+    --edge-6:            rgba(0, 0, 0, 0.060);
+
+    --well-bg:           rgba(0, 0, 0, 0.040);
+    --well-bg-soft:      rgba(0, 0, 0, 0.035);
+    --well-bg-focus:     rgba(0, 0, 0, 0.060);
+    --well-border:       rgba(0, 0, 0, 0.12);
+    --well-border-2:     rgba(0, 0, 0, 0.13);
+    --well-border-focus: rgba(0, 0, 0, 0.32);
+
+    --txt:               rgba(0, 0, 0, 0.88);
+    --txt-dim:           rgba(0, 0, 0, 0.50);
+    --txt-faint:         rgba(0, 0, 0, 0.32);
+    --txt-strong:        #000;
+
+    --track-bg:          rgba(0, 0, 0, 0.14);
+    --badge-bg:          #1c1c1e;
+    --badge-txt:         #fff;
+
+    /* Far lighter: a dark-theme shadow alpha on a light surface reads as dirt. */
+    --sh-1:              rgba(0, 0, 0, 0.06);
+    --sh-2:              rgba(0, 0, 0, 0.07);
+    --sh-3:              rgba(0, 0, 0, 0.08);
+    --sh-4:              rgba(0, 0, 0, 0.10);
+    --sh-5:              rgba(0, 0, 0, 0.12);
+    --sh-6:              rgba(0, 0, 0, 0.14);
+    --sh-7:              rgba(0, 0, 0, 0.16);
+
+    --compare-line:      rgba(0, 0, 0, 0.72);
+    --cmp-label-bg:      rgba(255, 255, 255, 0.88);
+    --cmp-label-txt:     rgba(0, 0, 0, 0.85);
+    --scrim:             rgba(0, 0, 0, 0.28);
+
+    --danger:            #cf2f2f;
+    --danger-wash:       rgba(207, 47, 47, 0.10);
+    --danger-wash-soft:  rgba(207, 47, 47, 0.07);
+    --toast-err-bg:      rgba(253, 241, 241, 0.94);
+    --toast-err-border:  rgba(207, 47, 47, 0.35);
+    --toast-err-txt:     #8c1d1d;
+    --toast-ok-bg:       rgba(238, 250, 241, 0.94);
+    --toast-ok-border:   rgba(34, 150, 70, 0.35);
+    --toast-ok-txt:      #17632f;
+    --commit-green-bg:     rgba(40, 180, 95, 0.14);
+    --commit-green-border: rgba(30, 160, 80, 0.45);
+    --commit-green-txt:    #12813f;
+    --commit-red-bg:       rgba(207, 47, 47, 0.10);
+    --commit-red-border:   rgba(207, 47, 47, 0.40);
+    --commit-red-txt:      #b32020;
+
+    --btn-bg:            #1c1c1e;
+    --btn-txt:           #fafafa;
+
+    --artboard-label-bg:  rgba(0, 0, 0, 0.05);
+    --artboard-label-txt: rgba(0, 0, 0, 0.55);
+    --artboard-outline:   rgba(0, 0, 0, 0.14);
+    --artboard-active:    rgba(0, 0, 0, 0.42);
+
+    --knob-bg:           #ffffff;
+    --knob-icon:         #1c1c1e;
+    --focus-ring:        rgba(0, 0, 0, 0.55);
+  }
+
+  /* Without backdrop-filter the translucent panels are barely visible — and a
+     light theme makes that far worse. Fall back to opaque surfaces. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    :root { --panel-bg: #212127; --glass-bg: #212127; }
+    :root[data-theme="light"] { --panel-bg: #fbfbfc; --glass-bg: #fbfbfc; }
+  }
+
+  /* Honour a reduced-motion preference across the whole UI: the app has ~20
+     transitions and none of them carry meaning. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* One visible focus ring for every interactive control. */
+  button:focus-visible,
+  input:focus-visible,
+  [contenteditable]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   html, body {
@@ -134,12 +281,85 @@
     height: 100vh;        /* fallback */
     height: 100dvh;       /* modern, handles mobile browser chrome */
     overflow: hidden;
-    background:
-      radial-gradient(120% 120% at 50% 0%, var(--ground) 0%, var(--ground-2) 100%);
+    background: var(--ground);
     color: var(--txt);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ---- Top-right utility bar + theme switch ----
+     Fixed and never draggable, so it permanently owns the corner. The colour
+     picker is user-draggable and can't be relied on to stay put, which is why
+     the switch gets its own layer above it rather than living inside it.
+     Deliberately NOT hidden in read-only mode: the photographer receiving a
+     share link needs the theme control just as much as the author does. */
+  #utilityBar {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top, 16px));
+    right: 16px;
+    z-index: 23;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #themeToggle {
+    appearance: none;
+    position: relative;
+    display: block;
+    width: 52px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 4px 14px var(--sh-3);
+    cursor: pointer;
+    transition: background var(--dur-2) ease, border-color var(--dur-2) ease;
+  }
+  #themeToggle:hover { background: var(--glass-bg-hover); }
+  #themeToggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .ts-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--knob-bg);
+    box-shadow: 0 1px 4px var(--sh-4);
+    display: grid;
+    place-items: center;
+    transition: transform var(--dur-2) ease;
+  }
+  :root[data-theme="dark"] .ts-knob { transform: translateX(24px); }
+
+  /* Both icons stack in the same grid cell and cross-fade while rotating, so the
+     knob reads as one object turning over rather than two icons swapping. */
+  .ts-knob svg {
+    grid-area: 1 / 1;
+    width: 14px;
+    height: 14px;
+    stroke: var(--knob-icon);
+    fill: none;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    transition: opacity var(--dur-2) ease, transform var(--dur-2) ease;
+  }
+  .ts-sun  { opacity: 1; transform: rotate(0deg); }
+  .ts-moon { opacity: 0; transform: rotate(-90deg); }
+  :root[data-theme="dark"] .ts-sun  { opacity: 0; transform: rotate(90deg); }
+  :root[data-theme="dark"] .ts-moon { opacity: 1; transform: rotate(0deg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    #themeToggle, .ts-knob, .ts-knob svg { transition: none; }
   }
 
   /* ---- Konva viewport ---- */
@@ -174,11 +394,10 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 22px;
-    backdrop-filter: var(--blur-card);
-    -webkit-backdrop-filter: var(--blur-card);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
     box-shadow:
-      0 24px 60px var(--sh-5),
-      inset 0 1px 0 var(--edge-4);
+      0 24px 60px var(--sh-5);
     transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, transform .18s ease;
   }
   #drop.dragover .card {
@@ -186,8 +405,7 @@
     background: var(--glass-bg-hover);
     box-shadow:
       0 24px 70px var(--sh-6),
-      0 0 0 4px var(--accent-glow),
-      inset 0 1px 0 var(--edge-6);
+      0 0 0 4px var(--glass-border-active);
     transform: scale(1.01);
   }
 
@@ -212,27 +430,24 @@
     max-width: 32ch;
   }
 
-  /* ---- Silver button ---- */
+  /* ---- Primary button ---- */
   .btn-silver {
     appearance: none;
     border: none;
     cursor: pointer;
-    font-size: 14px;
+    font-size: var(--fs-md);
     font-weight: 600;
     letter-spacing: 0.01em;
-    color: var(--silver-txt);
+    color: var(--btn-txt);
     padding: 12px 30px;
     border-radius: 13px;
-    background: var(--silver-grad);
-    box-shadow:
-      0 1px 0 var(--silver-inset-top) inset,
-      0 -1px 0 var(--silver-inset-bot) inset,
-      0 6px 18px var(--sh-3);
-    transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    background: var(--btn-bg);
+    box-shadow: 0 6px 18px var(--sh-3);
+    transition: transform var(--dur-1) ease, box-shadow var(--dur-1) ease, filter var(--dur-1) ease;
   }
   .btn-silver:hover { filter: brightness(1.04); transform: translateY(-1px); }
   .btn-silver:active { transform: translateY(0); filter: brightness(0.97);
-    box-shadow: 0 1px 0 var(--silver-inset-active) inset, 0 2px 8px var(--sh-2); }
+    box-shadow: 0 2px 8px var(--sh-2); }
 
   .hint {
     font-size: 11.5px;
@@ -252,8 +467,8 @@
     padding: 11px 18px;
     border-radius: 12px;
     font-size: 13px;
-    backdrop-filter: var(--blur-toast);
-    -webkit-backdrop-filter: var(--blur-toast);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
     box-shadow: 0 12px 30px var(--sh-4);
     opacity: 0;
     pointer-events: none;
@@ -278,9 +493,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 14px 36px var(--sh-4), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 14px 36px var(--sh-4);
     z-index: 20;
     user-select: none;
   }
@@ -371,9 +586,9 @@
     border-radius: 50%;
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-4), inset 0 1px 0 var(--edge-4);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-4);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -411,9 +626,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 12px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-3), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-3);
     z-index: 21;
     user-select: none;
   }
@@ -462,9 +677,9 @@
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: 14px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 8px 24px var(--sh-3), inset 0 1px 0 var(--edge-3);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 8px 24px var(--sh-3);
     z-index: 20;
     user-select: none;
   }
@@ -516,9 +731,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    backdrop-filter: var(--blur-md);
-    -webkit-backdrop-filter: var(--blur-md);
-    box-shadow: 0 6px 20px var(--sh-4), inset 0 1px 0 var(--edge-5);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 6px 20px var(--sh-4);
     transition: transform .12s ease, filter .12s ease;
   }
   .commit-btn:hover { transform: scale(1.09); filter: brightness(1.1); }
@@ -544,12 +759,12 @@
     gap: 10px;
     width: min(340px, calc(100vw - 40px));
     padding: 14px;
-    background: var(--panel-bg-alt);
+    background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-xl);
-    -webkit-backdrop-filter: var(--blur-xl);
-    box-shadow: 0 20px 50px var(--sh-7), inset 0 1px 0 var(--edge-2);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 20px 50px var(--sh-7);
     z-index: 30;
   }
   #commentBox.show { display: flex; }
@@ -589,26 +804,35 @@
     display: none;
     flex-direction: column;
     width: var(--rail-w);
-    max-height: calc(100dvh - 80px);
-    max-height: calc(100vh - 80px);
-    background: var(--panel-bg-soft);
+    /* dvh first as a fallback for browsers without it, then the accurate value */
+    max-height: calc(100vh - 80px - var(--util-h));
+    max-height: calc(100dvh - 80px - var(--util-h));
+    background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 16px 40px var(--sh-6), inset 0 1px 0 var(--edge-1);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 16px 40px var(--sh-6);
     z-index: 20;
     overflow: hidden;
   }
   #layersPanel.show { display: flex; }
 
-  #layersPanelHeader {
-    padding: 11px 13px 9px;
-    font-size: 10.5px;
+  /* The one typographic voice the app already had: a small, heavily tracked
+     uppercase label. Formalised here as a single rule instead of four copies. */
+  #layersPanelHeader,
+  #colorPickerHeader,
+  #cpRecentsLabel,
+  #cpBrushLabel {
+    font-size: var(--fs-eyebrow);
     font-weight: 700;
     letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--txt-dim);
+  }
+
+  #layersPanelHeader {
+    padding: 11px 13px 9px;
     border-bottom: 1px solid var(--divider);
     flex-shrink: 0;
     cursor: grab;
@@ -703,16 +927,18 @@
   #colorPicker {
     position: absolute;
     right: 16px;
-    top: max(16px, env(safe-area-inset-top, 16px));
+    /* offset below the utility bar; the layers panel docks to this panel's
+       bottom edge, so the whole rail shifts down with it */
+    top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h));
     display: none;
     flex-direction: column;
     width: var(--rail-w);
     background: var(--panel-bg);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
-    backdrop-filter: var(--blur-lg);
-    -webkit-backdrop-filter: var(--blur-lg);
-    box-shadow: 0 16px 40px var(--sh-7), inset 0 1px 0 var(--edge-1);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 16px 40px var(--sh-7);
     z-index: 22;
     overflow: visible;
     padding-bottom: 12px;
@@ -720,11 +946,6 @@
 
   #colorPickerHeader {
     padding: 11px 13px 9px;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
     border-bottom: 1px solid var(--divider);
     flex-shrink: 0;
     cursor: grab;
@@ -821,13 +1042,6 @@
     margin: 8px 12px 0;
   }
   #cpRecentsWrap.has-recents { display: flex; }
-  #cpRecentsLabel {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
-  }
   #cpRecents {
     display: flex;
     flex-wrap: wrap;
@@ -846,7 +1060,7 @@
   .cp-recent:hover { transform: scale(1.25); border-color: var(--swatch-border-hover); }
   .cp-recent.active {
     border-color: var(--thumb-border);
-    box-shadow: 0 0 0 1.5px var(--accent-glow), 0 1px 3px var(--sh-2);
+    box-shadow: 0 0 0 1.5px var(--glass-border-active), 0 1px 3px var(--sh-2);
   }
 
   /* Brush size slider */
@@ -860,13 +1074,6 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-  }
-  #cpBrushLabel {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: var(--txt-dim);
   }
   #cpBrushNum {
     font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
@@ -906,6 +1113,81 @@
     cursor: pointer;
   }
 
+  /* ---- Keyboard shortcut overlay ---- */
+  #shortcuts {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--scrim);
+  }
+  #shortcuts.show { display: flex; }
+  #shortcutsCard {
+    width: min(420px, 100%);
+    padding: 22px 24px;
+    border-radius: 16px;
+    background: var(--panel-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 20px 50px var(--sh-7);
+  }
+  #shortcutsCard h2 {
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--txt-dim);
+    margin-bottom: 14px;
+  }
+  .sc-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--divider-soft);
+    font-size: var(--fs-sm);
+  }
+  .sc-row:last-child { border-bottom: none; }
+  .sc-row span { color: var(--txt); }
+  .sc-row kbd {
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: var(--fs-xs);
+    color: var(--txt-dim);
+    white-space: nowrap;
+  }
+
+  /* ---- Idle-fade ----
+     When you stop interacting, the chrome settles back so the image has the
+     screen. Any input restores it instantly, and hover or focus always wins
+     over the fade, so nothing is ever unreachable. Engaged from JS, which
+     also holds it off while a stroke is pending or a field has focus. */
+  #toolbar, #controls, #colorPicker, #layersPanel, #utilityBar,
+  #mobileToolDock, #mobileColorBar, #mobileBrushBar {
+    transition: opacity var(--dur-3) ease;
+  }
+  body.idle #toolbar,
+  body.idle #controls,
+  body.idle #colorPicker,
+  body.idle #layersPanel,
+  body.idle #utilityBar,
+  body.idle #mobileToolDock,
+  body.idle #mobileColorBar,
+  body.idle #mobileBrushBar { opacity: 0.45; }
+
+  body.idle #toolbar:hover,        body.idle #toolbar:focus-within,
+  body.idle #controls:hover,       body.idle #controls:focus-within,
+  body.idle #colorPicker:hover,    body.idle #colorPicker:focus-within,
+  body.idle #layersPanel:hover,    body.idle #layersPanel:focus-within,
+  body.idle #utilityBar:hover,     body.idle #utilityBar:focus-within,
+  body.idle #mobileToolDock:hover, body.idle #mobileToolDock:focus-within,
+  body.idle #mobileColorBar:hover, body.idle #mobileColorBar:focus-within,
+  body.idle #mobileBrushBar:hover, body.idle #mobileBrushBar:focus-within { opacity: 1; }
+
   /* ---- Mobile-only bottom dock + bottom-sheet layout (screens <=760px) ----
      Desktop is untouched: these rules either sit outside the media query
      (and only force display:none) or are inside it, so they never apply above
@@ -920,7 +1202,7 @@
       display: flex;
       position: fixed;
       right: 16px;
-      top: calc(max(16px, env(safe-area-inset-top, 16px)) + min(200px, 22.5vh) + 10px);
+      top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h) + min(180px, 20vh) + 10px);
       z-index: 25;
     }
     .mdock-btn {
@@ -929,8 +1211,8 @@
       border-radius: 15px;
       border: 2px solid var(--dock-border);
       background: var(--panel-bg);
-      backdrop-filter: var(--blur-md);
-      -webkit-backdrop-filter: var(--blur-md);
+      backdrop-filter: var(--blur-panel);
+      -webkit-backdrop-filter: var(--blur-panel);
       box-shadow: 0 6px 18px var(--sh-5);
       display: flex;
       align-items: center;
@@ -998,10 +1280,11 @@
     #mobileColorBar.show {
       display: block;
       position: fixed;
-      top: max(16px, env(safe-area-inset-top, 16px));
+      /* shortened and pushed down so the theme switch takes the top of the stack */
+      top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h));
       right: 16px;
       width: 30px;
-      height: min(200px, 22.5vh);
+      height: min(180px, 20vh);
       border-radius: 15px;
       border: 2px solid var(--dock-border);
       box-shadow: 0 6px 18px var(--sh-5);
@@ -1042,8 +1325,8 @@
       border-radius: 20px;
       background: var(--panel-bg);
       border: 1px solid var(--glass-border);
-      backdrop-filter: var(--blur-md);
-      -webkit-backdrop-filter: var(--blur-md);
+      backdrop-filter: var(--blur-panel);
+      -webkit-backdrop-filter: var(--blur-panel);
       box-shadow: 0 6px 18px var(--sh-5);
       z-index: 25;
     }
@@ -1089,6 +1372,23 @@
 <body>
   <!-- Canvas viewport -->
   <div id="stage"></div>
+
+  <!-- Top-right utilities. role="switch" gives Space/Enter and screen-reader
+       semantics for free, so no custom key handling is needed. -->
+  <div id="utilityBar">
+    <button id="themeToggle" type="button" role="switch" aria-checked="false"
+            aria-label="Dark mode" title="Toggle light / dark">
+      <span class="ts-knob">
+        <svg class="ts-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/>
+          <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/>
+        </svg>
+        <svg class="ts-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z" stroke-linejoin="round"/>
+        </svg>
+      </span>
+    </button>
+  </div>
 
   <!-- Drop / upload card -->
   <div id="drop">
@@ -1250,6 +1550,24 @@
     <span id="mobileBrushNum">4</span>
   </div>
 
+  <!-- Keyboard shortcuts (press ?) -->
+  <div id="shortcuts" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <div id="shortcutsCard">
+      <h2>Keyboard</h2>
+      <div class="sc-row"><span>Hold to pan</span><kbd>Space</kbd></div>
+      <div class="sc-row"><span>Pan</span><kbd>Middle-drag</kbd></div>
+      <div class="sc-row"><span>Zoom tool — click, or drag to scrub</span><kbd>Z</kbd></div>
+      <div class="sc-row"><span>Zoom out instead</span><kbd>Z + Alt</kbd></div>
+      <div class="sc-row"><span>Zoom to pointer</span><kbd>Scroll</kbd></div>
+      <div class="sc-row"><span>Fit to screen</span><kbd>Double-click</kbd></div>
+      <div class="sc-row"><span>Undo</span><kbd>Ctrl / Cmd + Z</kbd></div>
+      <div class="sc-row"><span>Redo</span><kbd>Ctrl / Cmd + Shift + Z</kbd></div>
+      <div class="sc-row"><span>Confirm comment</span><kbd>Ctrl / Cmd + Enter</kbd></div>
+      <div class="sc-row"><span>Discard comment</span><kbd>Esc</kbd></div>
+      <div class="sc-row"><span>This list</span><kbd>?</kbd></div>
+    </div>
+  </div>
+
   <!-- Error toast -->
   <div id="err"></div>
 
@@ -1310,6 +1628,44 @@
     var SUPA_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1pYXRrZ29paXBvZmF6cGpkbGd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3Njg5NDcsImV4cCI6MjA5ODM0NDk0N30.i4SuxWJMr7kJ_7YI2G8ZSVx_gsh_NBiMn-LWnwXdwIU';
     var SUPA_BUCKET = 'shots';
     var MAX_UPLOAD_BYTES = 15 * 1024 * 1024;  // friendly guard before upload
+    // Must match MAX_AGE_HOURS in supabase/functions/cleanup-shares/index.ts —
+    // the Edge Function is what actually deletes them; this only reports it.
+    var SHARE_TTL_HOURS = 8;
+
+    // Milliseconds left before a share is swept, or null if created_at is unusable.
+    function shareRemainingMs(createdAt) {
+      var t = Date.parse(createdAt);
+      if (isNaN(t)) return null;
+      return t + SHARE_TTL_HOURS * 3600000 - Date.now();
+    }
+
+    // "7h 20m" / "45m". Null once nothing is left.
+    function formatRemaining(ms) {
+      if (ms == null || ms <= 0) return null;
+      var mins = Math.floor(ms / 60000);
+      var h = Math.floor(mins / 60), m = mins % 60;
+      if (h && m) return h + 'h ' + m + 'm';
+      if (h) return h + 'h';
+      return Math.max(1, m) + 'm';
+    }
+
+    // Replace the upload card with a terminal message. Viewers land on the drop
+    // card by default, which invites them to upload their own photo — exactly the
+    // wrong thing to offer someone who followed a share link that no longer works.
+    function showViewerNotice(title, body) {
+      var card = document.getElementById('card');
+      var drop = document.getElementById('drop');
+      if (!card || !drop) return;
+      drop.classList.remove('hide');
+      card.innerHTML =
+        '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="9"/>' +
+        '<path d="M12 7.5v5" stroke-linecap="round"/><path d="M12 16.2v.4" stroke-linecap="round"/>' +
+        '</svg>' +
+        '<div><h1></h1><p></p></div>';
+      card.querySelector('h1').textContent = title;
+      card.querySelector('p').textContent = body;
+    }
     function shareEnabled() { return !!(SUPA_URL && SUPA_KEY); }
 
     // ---- Elements ----
@@ -1413,8 +1769,8 @@
     // Each frame is one photo with its own annotations / undo history / v2.
     // The single-image globals above (imageNode, imgW/imgH, sourceBlob, annotations,
     // history…) always mirror the *active* frame; other frames hold serialized data.
-    var frames = [];             // [{ id, image, blob, imgW, imgH, imagePath,
-                                 //    imageV2Path, v2Image, snapshot, history, histIndex, thumb }]
+    var frames = [];             // [{ id, image, blob, imgW, imgH, imagePath, imageV2Path,
+                                 //    v2Image, snapshot, history, histIndex, x, y, label }]
     var activeFrameIndex = -1;
     var frameSeq = 0;
 
@@ -1527,6 +1883,60 @@
       } catch (e) { return Promise.resolve(false); }
     }
 
+    // ---- Theme ----
+    // Artboard chrome is drawn by Konva onto the canvas, so it can't inherit from
+    // CSS. Read the same tokens the stylesheet uses and push them onto the nodes,
+    // so canvas and DOM never disagree about the theme.
+    function themeToken(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function applyThemeToCanvas() {
+      var labelBg = themeToken('--artboard-label-bg');
+      var labelTxt = themeToken('--artboard-label-txt');
+      var outline = themeToken('--artboard-outline');
+      var active = themeToken('--artboard-active');
+      frames.forEach(function (f, i) {
+        if (f.labelRect) {
+          f.labelRect.fill(labelBg);
+          // Only the active artboard carries the highlight stroke.
+          if (f.labelRect.stroke()) f.labelRect.stroke(active);
+        }
+        if (f.labelText) f.labelText.fill(labelTxt);
+        if (f.outlineRect) f.outlineRect.stroke(outline);
+        if (f.deleteIcon) {
+          f.deleteIcon.find('Line').forEach(function (l) { l.stroke(labelTxt); });
+        }
+      });
+      if (typeof worldLayer !== 'undefined' && worldLayer) worldLayer.batchDraw();
+    }
+
+    function currentTheme() {
+      return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    }
+
+    // persist=false is used on load and for OS-driven changes: writing to storage
+    // there would pin the theme on first visit and permanently stop it following
+    // the system. Only an explicit click persists.
+    function applyTheme(next, persist) {
+      document.documentElement.setAttribute('data-theme', next);
+      if (persist) {
+        try { localStorage.setItem('markup-theme', next); } catch (e) {}
+      }
+      var btn = document.getElementById('themeToggle');
+      if (btn) {
+        btn.setAttribute('aria-checked', next === 'dark' ? 'true' : 'false');
+        btn.setAttribute('aria-label', next === 'dark' ? 'Dark mode' : 'Light mode');
+      }
+      applyThemeToCanvas();
+    }
+
+    // Vertical space reserved by the top-right utility bar, from --util-h.
+    function railTopOffset() {
+      var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--util-h'));
+      return isNaN(v) ? 40 : v;
+    }
+
     // Width of the right-hand rail (colour picker + layers panel), read from the
     // --rail-w token so the value lives in exactly one place.
     function railWidth() {
@@ -1608,68 +2018,6 @@
     var fitToScreen = fitAll;
 
     // ---- Load an image file ----
-    function loadFile(file) {
-      if (!file) return;
-      if (!file.type || file.type.indexOf('image/') !== 0) {
-        showError('That file isn’t an image we can open.');
-        return;
-      }
-
-      sourceBlob = file;   // keep the original bytes for sharing/upload
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-
-      img.onload = function () {
-        imgW = img.naturalWidth || img.width;
-        imgH = img.naturalHeight || img.height;
-        if (!imgW || !imgH) {
-          showError('Couldn’t read this image. Try JPG, PNG or WebP.');
-          URL.revokeObjectURL(url);
-          return;
-        }
-
-        // Clear any previous image (and any active comparison)
-        if (compareMode) exitCompare();
-        if (imageNode) { imageNode.destroy(); }
-        imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
-        worldLayer.add(imageNode);
-
-        dropEl.classList.add('hide');
-        controls.classList.add('show');
-        toolbar.classList.add('show');
-        document.getElementById('colorPicker').style.display = 'flex';
-        stageEl.classList.add('grabbable');
-
-        // Let layout settle, then size the stage and fit; show layers panel
-        requestAnimationFrame(function () {
-          resizeStage();
-          fitToScreen();
-          renderLayersPanel();
-          resetHistory();
-          // When opening a shared link, rebuild its annotations on top of the loaded image
-          if (pendingSnapshot) {
-            restoreSnapshot(pendingSnapshot);
-            pendingSnapshot = null;
-            setTool('pan');
-            fitToScreen();
-          }
-        });
-      };
-
-      img.onerror = function () {
-        URL.revokeObjectURL(url);
-        // HEIC and some other formats fail to decode in most browsers
-        var name = (file.name || '').toLowerCase();
-        if (name.endsWith('.heic') || name.endsWith('.heif')) {
-          showError('HEIC photos aren’t supported by browsers yet. Export as JPG and try again.');
-        } else {
-          showError('Couldn’t open this file. Try JPG, PNG, WebP, GIF or AVIF.');
-        }
-      };
-
-      img.src = url;
-    }
-
     // ---- Frames (multi-image) ----
     function makeFrameId() { return 'f' + (frameSeq++); }
 
@@ -1688,19 +2036,6 @@
         img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
         img.src = url;
       });
-    }
-
-    // A small cached thumbnail (data URL) for the filmstrip.
-    function makeThumb(img, w, h) {
-      var max = 120;
-      var scale = Math.min(max / w, max / h, 1);
-      var c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(w * scale));
-      c.height = Math.max(1, Math.round(h * scale));
-      try {
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        return c.toDataURL('image/jpeg', 0.6);
-      } catch (e) { return null; }
     }
 
     function showChrome() {
@@ -1744,9 +2079,8 @@
             imagePath: null, imageV2Path: null, v2Image: null,
             snapshot: { annotationCount: 0, staging: [], annotations: [] },
             history: [], histIndex: -1,
-            thumb: makeThumb(res.img, res.w, res.h),
             x: pos.x, y: pos.y, label: label,
-            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
           });
         });
@@ -1784,7 +2118,6 @@
         .then(function (blob) { frame.blob = blob; return decodeImage(blob); })
         .then(function (res) {
           frame.image = res.img; frame.imgW = res.w; frame.imgH = res.h;
-          if (!frame.thumb) frame.thumb = makeThumb(res.img, res.w, res.h);
           if (frame.imageV2Path && !frame.v2Image) {
             return fetch(supaPublicUrl(frame.imageV2Path))
               .then(function (r) { return r.blob(); })
@@ -1820,6 +2153,11 @@
         }
         activeFrameIndex = i;
         if (imageNode) { imageNode.destroy(); imageNode = null; }
+        // The target may already own a node parented straight to worldLayer —
+        // unmountArtboard() re-parents one there when a project drops to a single
+        // frame. Destroying only the global imageNode (which points at the frame
+        // we just left) would strand it and leave two images stacked on the canvas.
+        if (target.imageNode) { target.imageNode.destroy(); target.imageNode = null; }
         imgW = target.imgW; imgH = target.imgH; sourceBlob = target.blob;
         imageNode = new Konva.Image({ image: target.image, x: 0, y: 0, width: imgW, height: imgH });
         target.imageNode = imageNode;
@@ -1915,7 +2253,7 @@
       var lRect = new Konva.Rect({
         x: 0, y: -ARTBOARD_LABEL_HEIGHT,
         width: frame.imgW, height: ARTBOARD_LABEL_HEIGHT,
-        fill: 'rgba(255,255,255,0.07)', cornerRadius: [4, 4, 0, 0]
+        fill: themeToken('--artboard-label-bg'), cornerRadius: [4, 4, 0, 0]
       });
       frame.labelRect = lRect;
       ag.add(lRect);
@@ -1923,10 +2261,45 @@
       var lText = new Konva.Text({
         x: 8, y: -ARTBOARD_LABEL_HEIGHT + 7,
         text: frame.label || ('Frame ' + (frames.indexOf(frame) + 1)),
-        fontSize: 12, fill: 'rgba(255,255,255,0.6)', listening: false
+        fontSize: 12, fill: themeToken('--artboard-label-txt'), listening: false
       });
       frame.labelText = lText;
       ag.add(lText);
+
+      // Delete control on the label bar. Authors only — a viewer has nothing to
+      // delete. Until now removeFrame() had no caller at all, so a mis-dropped
+      // photo could only be cleared by reloading and losing the whole session.
+      if (!readOnly) {
+        var D = 18, c = D / 2, s = 4.5;
+        var pad = (ARTBOARD_LABEL_HEIGHT - D) / 2;
+        var del = new Konva.Group({
+          name: 'frameDelete',
+          x: frame.imgW - D - pad, y: -ARTBOARD_LABEL_HEIGHT + pad
+        });
+        // transparent rect gives the two thin strokes a usable hit area
+        del.add(new Konva.Rect({ width: D, height: D, cornerRadius: 4, fill: 'rgba(0,0,0,0.001)' }));
+        var stroke = themeToken('--artboard-label-txt');
+        del.add(new Konva.Line({ points: [c - s, c - s, c + s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        del.add(new Konva.Line({ points: [c + s, c - s, c - s, c + s], stroke: stroke, strokeWidth: 1.6, lineCap: 'round' }));
+        del.on('mouseenter', function () { stage.container().style.cursor = 'pointer'; });
+        del.on('mouseleave', function () { stage.container().style.cursor = ''; });
+        del.on('click tap', function (e) {
+          e.cancelBubble = true;   // don't also activate/drag the artboard
+          var idx = frames.indexOf(frame);
+          if (idx < 0) return;
+          // Removing a frame drops its annotations and isn't undoable, so ask
+          // first — but only when there is actually something to lose.
+          var count = (frame.liveAnnotations && frame.liveAnnotations.length) ||
+                      (frame.snapshot && frame.snapshot.annotations ? frame.snapshot.annotations.length : 0);
+          var name = frame.label || ('Frame ' + (idx + 1));
+          if (count && !window.confirm(
+                'Delete "' + name + '" and its ' + count +
+                (count === 1 ? ' annotation?' : ' annotations?'))) return;
+          removeFrame(idx);
+        });
+        frame.deleteIcon = del;
+        ag.add(del);
+      }
 
       // Use existing imageNode if already created, otherwise create it
       if (frame.imageNode) {
@@ -1941,8 +2314,9 @@
 
       var outline = new Konva.Rect({
         x: 0, y: 0, width: frame.imgW, height: frame.imgH,
-        stroke: 'rgba(255,255,255,0.12)', strokeWidth: 1, listening: false
+        stroke: themeToken('--artboard-outline'), strokeWidth: 1, listening: false
       });
+      frame.outlineRect = outline;
       ag.add(outline);
 
       rebuildAnnotationsInArtboard(frame);
@@ -1974,6 +2348,8 @@
       frame.artboardGroup = null;
       frame.labelRect = null;
       frame.labelText = null;
+      frame.outlineRect = null;
+      frame.deleteIcon = null;
       // Rebuild annotations directly in worldLayer
       frame.liveAnnotations = [];
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -1990,10 +2366,12 @@
     }
 
     function rebuildAnnotationsInArtboard(frame) {
-      // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount)
+      // Remove any existing annotation groups from this artboard (avoid duplicates on re-mount).
+      // Scoped by name: the artboard's own delete control is also a Group, and a
+      // blanket "destroy every Group child" would take it out too.
       if (frame.artboardGroup) {
         frame.artboardGroup.getChildren().forEach(function(child) {
-          if (child instanceof Konva.Group) child.destroy();
+          if (child instanceof Konva.Group && child.name() !== 'frameDelete') child.destroy();
         });
       }
       var snap = frame.snapshot || { annotationCount: 0, staging: [], annotations: [] };
@@ -2049,6 +2427,9 @@
           stagingLayer.position({ x: frame.x || 0, y: frame.y || 0 });
         }
         worldLayer.batchDraw();
+        // Only record when it actually moved, so a click on the label bar to
+        // activate a board doesn't push a no-op onto the undo stack.
+        if (frame.x !== startFX || frame.y !== startFY) recordHistory();
       });
     }
 
@@ -2110,7 +2491,7 @@
       imageNode = target.imageNode;
 
       // Highlight active artboard label
-      if (target.labelRect) target.labelRect.stroke('rgba(255,255,255,0.45)');
+      if (target.labelRect) target.labelRect.stroke(themeToken('--artboard-active'));
 
       // Offset stagingLayer to active artboard origin
       stagingLayer.position({ x: target.x || 0, y: target.y || 0 });
@@ -2590,9 +2971,10 @@
           // visible; actual open/close is the .mobile-sheet-open toggle from the dock.
           layersPanel.classList.add('show');
         } else if (readOnly) {
-          // The color picker is hidden for viewers, so dock independently (top-right)
+          // The color picker is hidden for viewers, so dock independently
+          // (top-right, below the utility bar so it clears the theme switch)
           layersAttachedToColorPicker = false;
-          layersPanel.style.top = '16px';
+          layersPanel.style.top = (16 + railTopOffset()) + 'px';
           layersPanel.style.left = 'auto';
           layersPanel.style.right = '16px';
           layersPanel.style.transform = 'none';
@@ -2603,7 +2985,8 @@
           // Defer getBoundingClientRect until layout is settled after renderRecents() may have changed picker height
           requestAnimationFrame(function () {
             var cpRect = cpEl.getBoundingClientRect();
-            var top = (cpRect.bottom > 0 ? cpRect.bottom : 16 + (cpEl.offsetHeight || 300)) + 8;
+            var top = (cpRect.bottom > 0 ? cpRect.bottom
+                                         : 16 + railTopOffset() + (cpEl.offsetHeight || 300)) + 8;
             var left = cpRect.left > 0 ? cpRect.left : (window.innerWidth - 16 - railWidth());
             layersPanel.style.top = top + 'px';
             layersPanel.style.left = left + 'px';
@@ -2778,8 +3161,13 @@
     }
 
     function snapshotState() {
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
       return {
         annotationCount: annotationCount,
+        // Artboard position rides along in the snapshot so moving a board is
+        // undoable like every other action.
+        frameX: af ? (af.x || 0) : 0,
+        frameY: af ? (af.y || 0) : 0,
         staging: stagingStrokes.map(strokeData),
         annotations: annotations.map(function (a) {
           var strokes = [];
@@ -2806,6 +3194,18 @@
       stagingLayer.destroyChildren();
       stagingStrokes = [];
       editingAnnotation = null;
+
+      // Put the artboard back where the snapshot had it, before annotations are
+      // rebuilt into it. Older snapshots predate these fields and simply skip this.
+      var af = activeFrameIndex >= 0 ? frames[activeFrameIndex] : null;
+      if (af && typeof snap.frameX === 'number' && typeof snap.frameY === 'number') {
+        af.x = snap.frameX;
+        af.y = snap.frameY;
+        if (af.artboardGroup) {
+          af.artboardGroup.position({ x: af.x, y: af.y });
+          stagingLayer.position({ x: af.x, y: af.y });
+        }
+      }
 
       var container = getAnnotationContainer();
 
@@ -3413,15 +3813,23 @@
       uploadNext()
         .then(function () {
           var doc = frames.map(function (f) {
-            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null, annotations: f.snapshot, x: f.x || 0, y: f.y || 0 };
+            // label is persisted so viewers see the artboard's real name; the
+            // viewer already reads it and falls back to "Frame N" without it.
+            return { frameId: f.id, imagePath: f.imagePath, imageV2Path: null,
+                     annotations: f.snapshot, x: f.x || 0, y: f.y || 0,
+                     label: f.label || null };
           });
           return supaInsertSession({ id: projId, annotations: doc, image_path: frames[0].imagePath });
         })
         .then(function () {
           shareId = projId; projectId = projId;
           var link = location.origin + location.pathname + '?s=' + projId;
+          // State the lifetime up front — it was previously invisible, so a link
+          // could quietly stop working with nothing having said it would.
+          var ttl = ' · expires in ' + SHARE_TTL_HOURS + 'h';
           return copyToClipboard(link).then(function (ok) {
-            showToast(ok ? 'Share link copied to clipboard ✓' : 'Share link: ' + link, true);
+            showToast(ok ? 'Share link copied to clipboard ✓' + ttl
+                         : 'Share link: ' + link + ttl, true);
           });
         })
         .catch(function (err) {
@@ -3429,6 +3837,86 @@
         })
         .then(function () { shareBtn.disabled = false; });
     });
+
+    // ---- Keyboard shortcut overlay ----
+    // Z, Space and middle-drag are all undiscoverable otherwise.
+    (function () {
+      var el = document.getElementById('shortcuts');
+      function close() { el.classList.remove('show'); }
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && el.classList.contains('show')) {
+          e.preventDefault(); close(); return;
+        }
+        // '?' is Shift+/ on most layouts, but read e.key so other layouts work too.
+        if (e.key !== '?' || e.ctrlKey || e.metaKey) return;
+        if (isTypingTarget(document.activeElement)) return;
+        e.preventDefault();
+        el.classList.toggle('show');
+      });
+      el.addEventListener('click', close);   // click anywhere to dismiss
+    })();
+
+    // ---- Idle-fade ----
+    // Non-essential chrome settles back after a pause so the photograph has the
+    // screen to itself. The exemptions matter more than the effect: anything the
+    // user is mid-way through must never dim, or the app reads as broken.
+    (function () {
+      var IDLE_MS = 4000;
+      var timer = null;
+      var reduceMotion = window.matchMedia &&
+                         matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function busy() {
+        return commitBar.classList.contains('show') ||    // stroke awaiting commit
+               commentBox.classList.contains('show') ||   // writing a comment
+               compareDivider.classList.contains('show') || // comparing v1/v2
+               isTypingTarget(document.activeElement);
+      }
+
+      function tick() {
+        if (busy()) { timer = setTimeout(tick, IDLE_MS); return; }
+        document.body.classList.add('idle');
+      }
+
+      function wake() {
+        if (document.body.classList.contains('idle')) {
+          document.body.classList.remove('idle');
+        }
+        if (timer) clearTimeout(timer);
+        if (reduceMotion) return;      // never engage when motion is unwelcome
+        timer = setTimeout(tick, IDLE_MS);
+      }
+
+      ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart']
+        .forEach(function (ev) { window.addEventListener(ev, wake, { passive: true }); });
+      window.addEventListener('blur', function () {
+        document.body.classList.remove('idle');
+        if (timer) clearTimeout(timer);
+      });
+      wake();
+    })();
+
+    // ---- Theme switch ----
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      // Sync aria state with whatever the <head> script already resolved.
+      applyTheme(currentTheme(), false);
+      btn.addEventListener('click', function () {
+        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
+      });
+      // Keep following the OS until the user makes an explicit choice.
+      if (window.matchMedia) {
+        var mq = matchMedia('(prefers-color-scheme: light)');
+        var onChange = function (e) {
+          var stored = null;
+          try { stored = localStorage.getItem('markup-theme'); } catch (err) {}
+          if (stored === 'light' || stored === 'dark') return;   // user chose; don't override
+          applyTheme(e.matches ? 'light' : 'dark', false);
+        };
+        if (mq.addEventListener) mq.addEventListener('change', onChange);
+        else if (mq.addListener) mq.addListener(onChange);
+      }
+    })();
 
     // ---- Control buttons ----
     document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
@@ -3571,7 +4059,20 @@
       }
       showToast('Loading shared annotations…', true);
       supaGetSession(sid).then(function (row) {
-        if (!row) { showError('That share link wasn’t found or has expired.'); return; }
+        if (!row) {
+          showViewerNotice('This review has expired',
+            'Shared reviews are deleted automatically after ' + SHARE_TTL_HOURS +
+            ' hours. Ask whoever sent this link to share it again.');
+          return;
+        }
+        // The row can still be present between expiry and the hourly sweep.
+        var leftMs = shareRemainingMs(row.created_at);
+        if (leftMs != null && leftMs <= 0) {
+          showViewerNotice('This review has expired',
+            'Shared reviews are deleted automatically after ' + SHARE_TTL_HOURS +
+            ' hours. Ask whoever sent this link to share it again.');
+          return;
+        }
         readOnly = true;
         shareId = sid; projectId = sid;
         document.body.classList.add('read-only');
@@ -3584,11 +4085,11 @@
             return {
               id: el.frameId, image: null, blob: null, imgW: 0, imgH: 0,
               imagePath: el.imagePath, imageV2Path: el.imageV2Path || null, v2Image: null,
-              snapshot: el.annotations, history: [], histIndex: -1, thumb: null,
+              snapshot: el.annotations, history: [], histIndex: -1,
               x: (typeof el.x === 'number') ? el.x : null,
               y: (typeof el.y === 'number') ? el.y : null,
               label: el.label || null,
-              artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+              artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
               liveAnnotations: []
             };
           });
@@ -3598,13 +4099,18 @@
           frames = [{
             id: 'f0', image: null, blob: null, imgW: 0, imgH: 0,
             imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
-            snapshot: doc, history: [], histIndex: -1, thumb: null,
+            snapshot: doc, history: [], histIndex: -1,
             x: 0, y: 0, label: null,
-            artboardGroup: null, imageNode: null, labelText: null, labelRect: null,
+            artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
           }];
         }
         if (!frames.length) { showError('This shared project has no images.'); return; }
+
+        // Tell the viewer how long they have; the link dying silently is worse
+        // than the deadline itself.
+        var left = formatRemaining(leftMs);
+        if (left) showToast('Shared review · expires in ' + left, true);
 
         showChrome();
 
