@@ -3528,16 +3528,22 @@
     });
 
     // ---- Wheel zoom (desktop / trackpad) ----
+    // Trackpad-native: two-finger scroll pans the canvas in both axes, pinch
+    // (which browsers report as wheel + ctrlKey) zooms at the pointer. This is
+    // the Figma/Miro convention; zooming stays on pinch, Z, and the buttons.
     stage.on('wheel', function (e) {
       e.evt.preventDefault();
       if (!imageNode) return;
-      var pointer = stage.getPointerPosition();
-      var direction = e.evt.deltaY > 0 ? 1 / ZOOM_STEP : ZOOM_STEP;
-      // Trackpad pinch reports ctrlKey; make it a touch finer
-      if (e.evt.ctrlKey) {
-        direction = e.evt.deltaY > 0 ? 1 / 1.05 : 1.05;
+      if (e.evt.ctrlKey || e.evt.metaKey) {
+        var pointer = stage.getPointerPosition();
+        // Smooth, magnitude-proportional pinch rather than fixed steps
+        var factor = Math.exp(-e.evt.deltaY * 0.01);
+        zoomTo(stage.scaleX() * Math.max(0.5, Math.min(2, factor)), pointer);
+        return;
       }
-      zoomTo(stage.scaleX() * direction, pointer);
+      stage.position({ x: stage.x() - e.evt.deltaX, y: stage.y() - e.evt.deltaY });
+      stage.batchDraw();
+      syncCompareUI();
     });
 
     // ---- Pinch zoom (touch) ----
