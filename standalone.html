@@ -1218,6 +1218,68 @@
     white-space: nowrap;
   }
 
+  /* ---- Confirm dialog ----
+     An in-app modal rather than window.confirm(), so destructive prompts match
+     the rest of the UI instead of dropping a native OS alert on top of it. */
+  #confirmDlg {
+    position: fixed;
+    inset: 0;
+    z-index: 45;              /* above the shortcut overlay (40) */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--scrim);
+  }
+  #confirmDlg.show { display: flex; }
+  #confirmCard {
+    width: min(400px, 100%);
+    padding: 24px 24px 20px;
+    border-radius: 20px;
+    background: var(--glass-grad);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow:
+      0 24px 60px var(--sh-6),
+      inset 0 1.4px 0 var(--liquid-hi),
+      inset 1.4px 0 0 var(--liquid-side-l),
+      inset -1.4px 0 0 var(--liquid-side-r),
+      inset 0 -1.4px 0 var(--liquid-lo);
+  }
+  #confirmTitle {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--txt);
+    margin-bottom: 8px;
+  }
+  #confirmBody {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--txt-dim);
+    margin-bottom: 20px;
+  }
+  .cf-actions { display: flex; justify-content: flex-end; gap: 10px; }
+  .cf-actions button {
+    appearance: none;
+    font: 700 13px "Helvetica Neue", Helvetica, Arial, sans-serif;
+    padding: 9px 18px;
+    border-radius: 11px;
+    cursor: pointer;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--txt);
+    transition: background var(--dur-1) ease, filter var(--dur-1) ease;
+  }
+  .cf-actions button:hover { background: var(--glass-bg-hover); }
+  .cf-actions .cf-danger {
+    background: var(--danger);
+    border-color: transparent;
+    color: #fff;
+  }
+  .cf-actions .cf-danger:hover { filter: brightness(1.08); background: var(--danger); }
+
   /* ---- Idle-fade ----
      When you stop interacting, the chrome settles back so the image has the
      screen. Any input restores it instantly, and hover or focus always wins
@@ -1634,11 +1696,25 @@
       <div class="sc-row"><span>Arrange in a column</span><kbd>2</kbd></div>
       <div class="sc-row"><span>Copy image</span><kbd>Ctrl / Cmd + C</kbd></div>
       <div class="sc-row"><span>Paste images</span><kbd>Ctrl / Cmd + V</kbd></div>
+      <div class="sc-row"><span>Delete all images</span><kbd>Del</kbd></div>
+      <div class="sc-row"><span>Delete all, no prompt</span><kbd>Shift + Del</kbd></div>
       <div class="sc-row"><span>Undo</span><kbd>Ctrl / Cmd + Z</kbd></div>
       <div class="sc-row"><span>Redo</span><kbd>Ctrl / Cmd + Shift + Z</kbd></div>
       <div class="sc-row"><span>Confirm comment</span><kbd>Ctrl / Cmd + Enter</kbd></div>
       <div class="sc-row"><span>Discard comment</span><kbd>Esc</kbd></div>
       <div class="sc-row"><span>This list</span><kbd>?</kbd></div>
+    </div>
+  </div>
+
+  <!-- Destructive-action confirmation -->
+  <div id="confirmDlg" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div id="confirmCard">
+      <h2 id="confirmTitle"></h2>
+      <p id="confirmBody"></p>
+      <div class="cf-actions">
+        <button id="confirmCancel" type="button">Cancel</button>
+        <button id="confirmOk" type="button" class="cf-danger">Delete</button>
+      </div>
     </div>
   </div>
 
@@ -2327,6 +2403,13 @@
         toolbar.classList.remove('show');
         document.getElementById('colorPicker').style.display = 'none';
         layersPanel.classList.remove('show');
+        // the mobile bars were left showing over an empty canvas
+        mobileToolDock.classList.remove('show');
+        mobileColorBar.classList.remove('show');
+        mobileBrushBar.classList.remove('show');
+        document.body.classList.remove('has-v2');
+        layersPanelPositioned = false;   // re-dock when images come back
+        updateUndoRedoButtons();
         return;
       }
 
@@ -2652,10 +2735,12 @@
           var count = (frame.liveAnnotations && frame.liveAnnotations.length) ||
                       (frame.snapshot && frame.snapshot.annotations ? frame.snapshot.annotations.length : 0);
           var name = frame.label || ('Frame ' + (idx + 1));
-          if (count && !window.confirm(
-                'Delete "' + name + '" and its ' + count +
-                (count === 1 ? ' annotation?' : ' annotations?'))) return;
-          removeFrame(idx);
+          if (!count) { removeFrame(idx); return; }   // nothing to lose, just go
+          openConfirm({
+            title: 'Delete "' + name + '"?',
+            body: 'It has ' + count + (count === 1 ? ' annotation' : ' annotations') +
+                  ' that will be removed with it. This cannot be undone.'
+          }).then(function (ok) { if (ok) removeFrame(frames.indexOf(frame)); });
         });
         var sx = 5.4 * gs;
         del.add(new Konva.Line({ points: [c - sx, c - sx, c + sx, c + sx], stroke: stroke, strokeWidth: 1.9 * gs, lineCap: 'round' }));
@@ -4449,6 +4534,80 @@
     // Any other view change makes the stored return-view stale; drop it so F
     // starts a fresh focus rather than jumping somewhere unexpected.
     stage.on('wheel dragend', function () { focusReturn = null; });
+
+    // ---- Confirm dialog ----
+    // Resolves true/false. Keydown is captured and stopped while it's open, so
+    // the canvas shortcuts (Z, V, F, A, Q/E, Del…) can't fire behind the modal.
+    var confirmOpen = false;
+    function openConfirm(opts) {
+      return new Promise(function (resolve) {
+        var el = document.getElementById('confirmDlg');
+        var okBtn = document.getElementById('confirmOk');
+        var cancelBtn = document.getElementById('confirmCancel');
+        document.getElementById('confirmTitle').textContent = opts.title;
+        document.getElementById('confirmBody').textContent = opts.body;
+        okBtn.textContent = opts.okLabel || 'Delete';
+        el.classList.add('show');
+        confirmOpen = true;
+        // Focus Cancel, not the destructive button — a stray Enter should be safe.
+        cancelBtn.focus();
+
+        function done(v) {
+          confirmOpen = false;
+          el.classList.remove('show');
+          window.removeEventListener('keydown', onKey, true);
+          okBtn.removeEventListener('click', onOk);
+          cancelBtn.removeEventListener('click', onCancel);
+          el.removeEventListener('mousedown', onBackdrop);
+          resolve(v);
+        }
+        function onOk() { done(true); }
+        function onCancel() { done(false); }
+        function onBackdrop(e) { if (e.target === el) done(false); }
+        function onKey(e) {
+          e.stopPropagation();
+          if (e.key === 'Escape') { e.preventDefault(); done(false); }
+          else if (e.key === 'Enter') { e.preventDefault(); done(document.activeElement === okBtn); }
+          else if (e.key === 'Tab') {
+            e.preventDefault();
+            (document.activeElement === cancelBtn ? okBtn : cancelBtn).focus();
+          }
+        }
+        window.addEventListener('keydown', onKey, true);
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        el.addEventListener('mousedown', onBackdrop);
+      });
+    }
+
+    // Remove every artboard. Deleting from the end keeps indices valid and
+    // reuses removeFrame(), which already handles unmounting artboard chrome at
+    // the 2->1 boundary and resetting the UI when the last one goes.
+    function clearAllFrames() {
+      for (var i = frames.length - 1; i >= 0; i--) removeFrame(i);
+      setSelection([]);
+      guideLayer.destroyChildren();
+      guideLayer.batchDraw();
+    }
+
+    // Del clears the canvas; Shift+Del skips the prompt.
+    window.addEventListener('keydown', function (e) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (readOnly || confirmOpen || !frames.length) return;
+      if (isTypingTarget(document.activeElement)) return;
+      if (document.getElementById('artboardRename')) return;   // renaming: Del edits text
+      e.preventDefault();
+      var n = frames.length;
+      if (e.shiftKey) { clearAllFrames(); return; }
+      openConfirm({
+        title: n === 1 ? 'Delete this image?' : 'Delete all ' + n + ' images?',
+        body: 'This removes ' + (n === 1 ? 'the image' : 'every image') +
+              ' and all annotations from the canvas. It cannot be undone. ' +
+              'Hold Shift with Delete to skip this prompt.',
+        okLabel: n === 1 ? 'Delete' : 'Delete all'
+      }).then(function (ok) { if (ok) clearAllFrames(); });
+    });
 
     // ---- Select all / arrange / clipboard ----
 
