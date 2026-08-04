@@ -1113,6 +1113,33 @@
     cursor: pointer;
   }
 
+  /* ---- Idle-fade ----
+     When you stop interacting, the chrome settles back so the image has the
+     screen. Any input restores it instantly, and hover or focus always wins
+     over the fade, so nothing is ever unreachable. Engaged from JS, which
+     also holds it off while a stroke is pending or a field has focus. */
+  #toolbar, #controls, #colorPicker, #layersPanel, #utilityBar,
+  #mobileToolDock, #mobileColorBar, #mobileBrushBar {
+    transition: opacity var(--dur-3) ease;
+  }
+  body.idle #toolbar,
+  body.idle #controls,
+  body.idle #colorPicker,
+  body.idle #layersPanel,
+  body.idle #utilityBar,
+  body.idle #mobileToolDock,
+  body.idle #mobileColorBar,
+  body.idle #mobileBrushBar { opacity: 0.45; }
+
+  body.idle #toolbar:hover,        body.idle #toolbar:focus-within,
+  body.idle #controls:hover,       body.idle #controls:focus-within,
+  body.idle #colorPicker:hover,    body.idle #colorPicker:focus-within,
+  body.idle #layersPanel:hover,    body.idle #layersPanel:focus-within,
+  body.idle #utilityBar:hover,     body.idle #utilityBar:focus-within,
+  body.idle #mobileToolDock:hover, body.idle #mobileToolDock:focus-within,
+  body.idle #mobileColorBar:hover, body.idle #mobileColorBar:focus-within,
+  body.idle #mobileBrushBar:hover, body.idle #mobileBrushBar:focus-within { opacity: 1; }
+
   /* ---- Mobile-only bottom dock + bottom-sheet layout (screens <=760px) ----
      Desktop is untouched: these rules either sit outside the media query
      (and only force display:none) or are inside it, so they never apply above
@@ -3709,6 +3736,46 @@
         })
         .then(function () { shareBtn.disabled = false; });
     });
+
+    // ---- Idle-fade ----
+    // Non-essential chrome settles back after a pause so the photograph has the
+    // screen to itself. The exemptions matter more than the effect: anything the
+    // user is mid-way through must never dim, or the app reads as broken.
+    (function () {
+      var IDLE_MS = 4000;
+      var timer = null;
+      var reduceMotion = window.matchMedia &&
+                         matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      function busy() {
+        return commitBar.classList.contains('show') ||    // stroke awaiting commit
+               commentBox.classList.contains('show') ||   // writing a comment
+               compareDivider.classList.contains('show') || // comparing v1/v2
+               isTypingTarget(document.activeElement);
+      }
+
+      function tick() {
+        if (busy()) { timer = setTimeout(tick, IDLE_MS); return; }
+        document.body.classList.add('idle');
+      }
+
+      function wake() {
+        if (document.body.classList.contains('idle')) {
+          document.body.classList.remove('idle');
+        }
+        if (timer) clearTimeout(timer);
+        if (reduceMotion) return;      // never engage when motion is unwelcome
+        timer = setTimeout(tick, IDLE_MS);
+      }
+
+      ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart']
+        .forEach(function (ev) { window.addEventListener(ev, wake, { passive: true }); });
+      window.addEventListener('blur', function () {
+        document.body.classList.remove('idle');
+        if (timer) clearTimeout(timer);
+      });
+      wake();
+    })();
 
     // ---- Theme switch ----
     (function () {
