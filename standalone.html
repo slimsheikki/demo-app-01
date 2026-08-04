@@ -1113,6 +1113,54 @@
     cursor: pointer;
   }
 
+  /* ---- Keyboard shortcut overlay ---- */
+  #shortcuts {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--scrim);
+  }
+  #shortcuts.show { display: flex; }
+  #shortcutsCard {
+    width: min(420px, 100%);
+    padding: 22px 24px;
+    border-radius: 16px;
+    background: var(--panel-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: var(--blur-panel);
+    -webkit-backdrop-filter: var(--blur-panel);
+    box-shadow: 0 20px 50px var(--sh-7);
+  }
+  #shortcutsCard h2 {
+    font-size: var(--fs-eyebrow);
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--txt-dim);
+    margin-bottom: 14px;
+  }
+  .sc-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--divider-soft);
+    font-size: var(--fs-sm);
+  }
+  .sc-row:last-child { border-bottom: none; }
+  .sc-row span { color: var(--txt); }
+  .sc-row kbd {
+    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+    font-size: var(--fs-xs);
+    color: var(--txt-dim);
+    white-space: nowrap;
+  }
+
   /* ---- Idle-fade ----
      When you stop interacting, the chrome settles back so the image has the
      screen. Any input restores it instantly, and hover or focus always wins
@@ -1500,6 +1548,24 @@
   <div id="mobileBrushBar">
     <input type="range" id="mobileBrushSlider" min="1" max="20" value="4" step="1" aria-label="Brush size">
     <span id="mobileBrushNum">4</span>
+  </div>
+
+  <!-- Keyboard shortcuts (press ?) -->
+  <div id="shortcuts" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <div id="shortcutsCard">
+      <h2>Keyboard</h2>
+      <div class="sc-row"><span>Hold to pan</span><kbd>Space</kbd></div>
+      <div class="sc-row"><span>Pan</span><kbd>Middle-drag</kbd></div>
+      <div class="sc-row"><span>Zoom tool — click, or drag to scrub</span><kbd>Z</kbd></div>
+      <div class="sc-row"><span>Zoom out instead</span><kbd>Z + Alt</kbd></div>
+      <div class="sc-row"><span>Zoom to pointer</span><kbd>Scroll</kbd></div>
+      <div class="sc-row"><span>Fit to screen</span><kbd>Double-click</kbd></div>
+      <div class="sc-row"><span>Undo</span><kbd>Ctrl / Cmd + Z</kbd></div>
+      <div class="sc-row"><span>Redo</span><kbd>Ctrl / Cmd + Shift + Z</kbd></div>
+      <div class="sc-row"><span>Confirm comment</span><kbd>Ctrl / Cmd + Enter</kbd></div>
+      <div class="sc-row"><span>Discard comment</span><kbd>Esc</kbd></div>
+      <div class="sc-row"><span>This list</span><kbd>?</kbd></div>
+    </div>
   </div>
 
   <!-- Error toast -->
@@ -3771,6 +3837,24 @@
         })
         .then(function () { shareBtn.disabled = false; });
     });
+
+    // ---- Keyboard shortcut overlay ----
+    // Z, Space and middle-drag are all undiscoverable otherwise.
+    (function () {
+      var el = document.getElementById('shortcuts');
+      function close() { el.classList.remove('show'); }
+      window.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && el.classList.contains('show')) {
+          e.preventDefault(); close(); return;
+        }
+        // '?' is Shift+/ on most layouts, but read e.key so other layouts work too.
+        if (e.key !== '?' || e.ctrlKey || e.metaKey) return;
+        if (isTypingTarget(document.activeElement)) return;
+        e.preventDefault();
+        el.classList.toggle('show');
+      });
+      el.addEventListener('click', close);   // click anywhere to dismiss
+    })();
 
     // ---- Idle-fade ----
     // Non-essential chrome settles back after a pause so the photograph has the
