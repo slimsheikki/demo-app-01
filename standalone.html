@@ -133,6 +133,15 @@
 
     /* ---------- Geometry ---------- */
     --rail-w:            220px;
+    /* Vertical space the top-right utility bar reserves. Everything anchored to
+       that corner (colour picker, layers panel, mobile colour bar) offsets by it,
+       so the switch always owns the corner outright. */
+    --util-h:            40px;
+
+    /* ---------- Theme switch ---------- */
+    --knob-bg:           #f0f0f2;
+    --knob-icon:         #1c1c1e;
+    --focus-ring:        rgba(255, 255, 255, 0.65);
 
     /* ---------- Type scale ---------- */
     --fs-eyebrow-sm:     10px;
@@ -242,6 +251,10 @@
     --artboard-label-txt: rgba(0, 0, 0, 0.55);
     --artboard-outline:   rgba(0, 0, 0, 0.14);
     --artboard-active:    rgba(0, 0, 0, 0.42);
+
+    --knob-bg:           #ffffff;
+    --knob-icon:         #1c1c1e;
+    --focus-ring:        rgba(0, 0, 0, 0.55);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -256,6 +269,80 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ---- Top-right utility bar + theme switch ----
+     Fixed and never draggable, so it permanently owns the corner. The colour
+     picker is user-draggable and can't be relied on to stay put, which is why
+     the switch gets its own layer above it rather than living inside it.
+     Deliberately NOT hidden in read-only mode: the photographer receiving a
+     share link needs the theme control just as much as the author does. */
+  #utilityBar {
+    position: fixed;
+    top: max(16px, env(safe-area-inset-top, 16px));
+    right: 16px;
+    z-index: 23;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #themeToggle {
+    appearance: none;
+    position: relative;
+    display: block;
+    width: 52px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: var(--glass-bg);
+    backdrop-filter: var(--blur-lg);
+    -webkit-backdrop-filter: var(--blur-lg);
+    box-shadow: 0 4px 14px var(--sh-3);
+    cursor: pointer;
+    transition: background var(--dur-2) ease, border-color var(--dur-2) ease;
+  }
+  #themeToggle:hover { background: var(--glass-bg-hover); }
+  #themeToggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+
+  .ts-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--knob-bg);
+    box-shadow: 0 1px 4px var(--sh-4);
+    display: grid;
+    place-items: center;
+    transition: transform var(--dur-2) ease;
+  }
+  :root[data-theme="dark"] .ts-knob { transform: translateX(24px); }
+
+  /* Both icons stack in the same grid cell and cross-fade while rotating, so the
+     knob reads as one object turning over rather than two icons swapping. */
+  .ts-knob svg {
+    grid-area: 1 / 1;
+    width: 14px;
+    height: 14px;
+    stroke: var(--knob-icon);
+    fill: none;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    transition: opacity var(--dur-2) ease, transform var(--dur-2) ease;
+  }
+  .ts-sun  { opacity: 1; transform: rotate(0deg); }
+  .ts-moon { opacity: 0; transform: rotate(-90deg); }
+  :root[data-theme="dark"] .ts-sun  { opacity: 0; transform: rotate(90deg); }
+  :root[data-theme="dark"] .ts-moon { opacity: 1; transform: rotate(0deg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    #themeToggle, .ts-knob, .ts-knob svg { transition: none; }
   }
 
   /* ---- Konva viewport ---- */
@@ -702,8 +789,9 @@
     display: none;
     flex-direction: column;
     width: var(--rail-w);
-    max-height: calc(100dvh - 80px);
-    max-height: calc(100vh - 80px);
+    /* dvh first as a fallback for browsers without it, then the accurate value */
+    max-height: calc(100vh - 80px - var(--util-h));
+    max-height: calc(100dvh - 80px - var(--util-h));
     background: var(--panel-bg-soft);
     border: 1px solid var(--glass-border);
     border-radius: 16px;
@@ -816,7 +904,9 @@
   #colorPicker {
     position: absolute;
     right: 16px;
-    top: max(16px, env(safe-area-inset-top, 16px));
+    /* offset below the utility bar; the layers panel docks to this panel's
+       bottom edge, so the whole rail shifts down with it */
+    top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h));
     display: none;
     flex-direction: column;
     width: var(--rail-w);
@@ -1033,7 +1123,7 @@
       display: flex;
       position: fixed;
       right: 16px;
-      top: calc(max(16px, env(safe-area-inset-top, 16px)) + min(200px, 22.5vh) + 10px);
+      top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h) + min(180px, 20vh) + 10px);
       z-index: 25;
     }
     .mdock-btn {
@@ -1111,10 +1201,11 @@
     #mobileColorBar.show {
       display: block;
       position: fixed;
-      top: max(16px, env(safe-area-inset-top, 16px));
+      /* shortened and pushed down so the theme switch takes the top of the stack */
+      top: calc(max(16px, env(safe-area-inset-top, 16px)) + var(--util-h));
       right: 16px;
       width: 30px;
-      height: min(200px, 22.5vh);
+      height: min(180px, 20vh);
       border-radius: 15px;
       border: 2px solid var(--dock-border);
       box-shadow: 0 6px 18px var(--sh-5);
@@ -1202,6 +1293,23 @@
 <body>
   <!-- Canvas viewport -->
   <div id="stage"></div>
+
+  <!-- Top-right utilities. role="switch" gives Space/Enter and screen-reader
+       semantics for free, so no custom key handling is needed. -->
+  <div id="utilityBar">
+    <button id="themeToggle" type="button" role="switch" aria-checked="false"
+            aria-label="Dark mode" title="Toggle light / dark">
+      <span class="ts-knob">
+        <svg class="ts-sun" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"/>
+          <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6"/>
+        </svg>
+        <svg class="ts-moon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2z" stroke-linejoin="round"/>
+        </svg>
+      </span>
+    </button>
+  </div>
 
   <!-- Drop / upload card -->
   <div id="drop">
@@ -1663,6 +1771,32 @@
         if (f.outlineRect) f.outlineRect.stroke(outline);
       });
       if (typeof worldLayer !== 'undefined' && worldLayer) worldLayer.batchDraw();
+    }
+
+    function currentTheme() {
+      return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    }
+
+    // persist=false is used on load and for OS-driven changes: writing to storage
+    // there would pin the theme on first visit and permanently stop it following
+    // the system. Only an explicit click persists.
+    function applyTheme(next, persist) {
+      document.documentElement.setAttribute('data-theme', next);
+      if (persist) {
+        try { localStorage.setItem('markup-theme', next); } catch (e) {}
+      }
+      var btn = document.getElementById('themeToggle');
+      if (btn) {
+        btn.setAttribute('aria-checked', next === 'dark' ? 'true' : 'false');
+        btn.setAttribute('aria-label', next === 'dark' ? 'Dark mode' : 'Light mode');
+      }
+      applyThemeToCanvas();
+    }
+
+    // Vertical space reserved by the top-right utility bar, from --util-h.
+    function railTopOffset() {
+      var v = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--util-h'));
+      return isNaN(v) ? 40 : v;
     }
 
     // Width of the right-hand rail (colour picker + layers panel), read from the
@@ -2730,9 +2864,10 @@
           // visible; actual open/close is the .mobile-sheet-open toggle from the dock.
           layersPanel.classList.add('show');
         } else if (readOnly) {
-          // The color picker is hidden for viewers, so dock independently (top-right)
+          // The color picker is hidden for viewers, so dock independently
+          // (top-right, below the utility bar so it clears the theme switch)
           layersAttachedToColorPicker = false;
-          layersPanel.style.top = '16px';
+          layersPanel.style.top = (16 + railTopOffset()) + 'px';
           layersPanel.style.left = 'auto';
           layersPanel.style.right = '16px';
           layersPanel.style.transform = 'none';
@@ -2743,7 +2878,8 @@
           // Defer getBoundingClientRect until layout is settled after renderRecents() may have changed picker height
           requestAnimationFrame(function () {
             var cpRect = cpEl.getBoundingClientRect();
-            var top = (cpRect.bottom > 0 ? cpRect.bottom : 16 + (cpEl.offsetHeight || 300)) + 8;
+            var top = (cpRect.bottom > 0 ? cpRect.bottom
+                                         : 16 + railTopOffset() + (cpEl.offsetHeight || 300)) + 8;
             var left = cpRect.left > 0 ? cpRect.left : (window.innerWidth - 16 - railWidth());
             layersPanel.style.top = top + 'px';
             layersPanel.style.left = left + 'px';
@@ -3569,6 +3705,28 @@
         })
         .then(function () { shareBtn.disabled = false; });
     });
+
+    // ---- Theme switch ----
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      // Sync aria state with whatever the <head> script already resolved.
+      applyTheme(currentTheme(), false);
+      btn.addEventListener('click', function () {
+        applyTheme(currentTheme() === 'dark' ? 'light' : 'dark', true);
+      });
+      // Keep following the OS until the user makes an explicit choice.
+      if (window.matchMedia) {
+        var mq = matchMedia('(prefers-color-scheme: light)');
+        var onChange = function (e) {
+          var stored = null;
+          try { stored = localStorage.getItem('markup-theme'); } catch (err) {}
+          if (stored === 'light' || stored === 'dark') return;   // user chose; don't override
+          applyTheme(e.matches ? 'light' : 'dark', false);
+        };
+        if (mq.addEventListener) mq.addEventListener('change', onChange);
+        else if (mq.addListener) mq.addListener(onChange);
+      }
+    })();
 
     // ---- Control buttons ----
     document.getElementById('zoomIn').addEventListener('click', function () { zoomByStep(ZOOM_STEP); });
