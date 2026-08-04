@@ -1703,8 +1703,8 @@
     // Each frame is one photo with its own annotations / undo history / v2.
     // The single-image globals above (imageNode, imgW/imgH, sourceBlob, annotations,
     // history…) always mirror the *active* frame; other frames hold serialized data.
-    var frames = [];             // [{ id, image, blob, imgW, imgH, imagePath,
-                                 //    imageV2Path, v2Image, snapshot, history, histIndex, thumb }]
+    var frames = [];             // [{ id, image, blob, imgW, imgH, imagePath, imageV2Path,
+                                 //    v2Image, snapshot, history, histIndex, x, y, label }]
     var activeFrameIndex = -1;
     var frameSeq = 0;
 
@@ -1952,68 +1952,6 @@
     var fitToScreen = fitAll;
 
     // ---- Load an image file ----
-    function loadFile(file) {
-      if (!file) return;
-      if (!file.type || file.type.indexOf('image/') !== 0) {
-        showError('That file isn’t an image we can open.');
-        return;
-      }
-
-      sourceBlob = file;   // keep the original bytes for sharing/upload
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-
-      img.onload = function () {
-        imgW = img.naturalWidth || img.width;
-        imgH = img.naturalHeight || img.height;
-        if (!imgW || !imgH) {
-          showError('Couldn’t read this image. Try JPG, PNG or WebP.');
-          URL.revokeObjectURL(url);
-          return;
-        }
-
-        // Clear any previous image (and any active comparison)
-        if (compareMode) exitCompare();
-        if (imageNode) { imageNode.destroy(); }
-        imageNode = new Konva.Image({ image: img, x: 0, y: 0, width: imgW, height: imgH });
-        worldLayer.add(imageNode);
-
-        dropEl.classList.add('hide');
-        controls.classList.add('show');
-        toolbar.classList.add('show');
-        document.getElementById('colorPicker').style.display = 'flex';
-        stageEl.classList.add('grabbable');
-
-        // Let layout settle, then size the stage and fit; show layers panel
-        requestAnimationFrame(function () {
-          resizeStage();
-          fitToScreen();
-          renderLayersPanel();
-          resetHistory();
-          // When opening a shared link, rebuild its annotations on top of the loaded image
-          if (pendingSnapshot) {
-            restoreSnapshot(pendingSnapshot);
-            pendingSnapshot = null;
-            setTool('pan');
-            fitToScreen();
-          }
-        });
-      };
-
-      img.onerror = function () {
-        URL.revokeObjectURL(url);
-        // HEIC and some other formats fail to decode in most browsers
-        var name = (file.name || '').toLowerCase();
-        if (name.endsWith('.heic') || name.endsWith('.heif')) {
-          showError('HEIC photos aren’t supported by browsers yet. Export as JPG and try again.');
-        } else {
-          showError('Couldn’t open this file. Try JPG, PNG, WebP, GIF or AVIF.');
-        }
-      };
-
-      img.src = url;
-    }
-
     // ---- Frames (multi-image) ----
     function makeFrameId() { return 'f' + (frameSeq++); }
 
@@ -2032,19 +1970,6 @@
         img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode')); };
         img.src = url;
       });
-    }
-
-    // A small cached thumbnail (data URL) for the filmstrip.
-    function makeThumb(img, w, h) {
-      var max = 120;
-      var scale = Math.min(max / w, max / h, 1);
-      var c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(w * scale));
-      c.height = Math.max(1, Math.round(h * scale));
-      try {
-        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-        return c.toDataURL('image/jpeg', 0.6);
-      } catch (e) { return null; }
     }
 
     function showChrome() {
@@ -2088,7 +2013,6 @@
             imagePath: null, imageV2Path: null, v2Image: null,
             snapshot: { annotationCount: 0, staging: [], annotations: [] },
             history: [], histIndex: -1,
-            thumb: makeThumb(res.img, res.w, res.h),
             x: pos.x, y: pos.y, label: label,
             artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
@@ -2128,7 +2052,6 @@
         .then(function (blob) { frame.blob = blob; return decodeImage(blob); })
         .then(function (res) {
           frame.image = res.img; frame.imgW = res.w; frame.imgH = res.h;
-          if (!frame.thumb) frame.thumb = makeThumb(res.img, res.w, res.h);
           if (frame.imageV2Path && !frame.v2Image) {
             return fetch(supaPublicUrl(frame.imageV2Path))
               .then(function (r) { return r.blob(); })
@@ -4078,7 +4001,7 @@
             return {
               id: el.frameId, image: null, blob: null, imgW: 0, imgH: 0,
               imagePath: el.imagePath, imageV2Path: el.imageV2Path || null, v2Image: null,
-              snapshot: el.annotations, history: [], histIndex: -1, thumb: null,
+              snapshot: el.annotations, history: [], histIndex: -1,
               x: (typeof el.x === 'number') ? el.x : null,
               y: (typeof el.y === 'number') ? el.y : null,
               label: el.label || null,
@@ -4092,7 +4015,7 @@
           frames = [{
             id: 'f0', image: null, blob: null, imgW: 0, imgH: 0,
             imagePath: row.image_path, imageV2Path: row.image_v2_path || null, v2Image: null,
-            snapshot: doc, history: [], histIndex: -1, thumb: null,
+            snapshot: doc, history: [], histIndex: -1,
             x: 0, y: 0, label: null,
             artboardGroup: null, imageNode: null, labelText: null, labelRect: null, outlineRect: null, deleteIcon: null,
             liveAnnotations: []
