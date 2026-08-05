@@ -1697,8 +1697,8 @@
       <div class="sc-row"><span>Resize freely (no aspect lock)</span><kbd>Shift + drag corner</kbd></div>
       <div class="sc-row"><span>Deselect</span><kbd>Click empty canvas</kbd></div>
       <div class="sc-row"><span>Select all artboards</span><kbd>Ctrl / Cmd + A</kbd></div>
-      <div class="sc-row"><span>Arrange in a row</span><kbd>1</kbd></div>
-      <div class="sc-row"><span>Arrange in a column</span><kbd>2</kbd></div>
+      <div class="sc-row"><span>Arrange in a row</span><kbd>1 or Ctrl / Cmd + Shift + 1</kbd></div>
+      <div class="sc-row"><span>Arrange in a column</span><kbd>2 or Ctrl / Cmd + Shift + 2</kbd></div>
       <div class="sc-row"><span>Copy image</span><kbd>Ctrl / Cmd + C</kbd></div>
       <div class="sc-row"><span>Paste images</span><kbd>Ctrl / Cmd + V</kbd></div>
       <div class="sc-row"><span>Delete all images</span><kbd>Del</kbd></div>
@@ -4796,16 +4796,14 @@
     window.addEventListener('keydown', function (e) {
       if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
       var mod = e.ctrlKey || e.metaKey;
-      // Cmd/Ctrl+1 / +2 arrange; browsers reserve Cmd+1 for tab switching on
-      // macOS, so plain 1 / 2 do the same thing as a fallback.
-      if ((e.code === 'Digit1' && (mod || !e.altKey)) && !e.shiftKey) {
-        if (mod) e.preventDefault();
-        arrangeFrames('x');
-        return;
-      }
-      if ((e.code === 'Digit2' && (mod || !e.altKey)) && !e.shiftKey) {
-        if (mod) e.preventDefault();
-        arrangeFrames('y');
+      // Arrange: Ctrl/Cmd+Shift+1 / +2, or plain 1 / 2. Bare Cmd+1 belongs to
+      // the browser's tab switcher — arranging on it re-flowed a hand-placed
+      // layout every time you changed tab.
+      if (e.code === 'Digit1' || e.code === 'Digit2') {
+        if (e.altKey) return;
+        if (mod !== e.shiftKey) return;   // bare Cmd+1 = tab switch; bare Shift+1 = '!'
+        e.preventDefault();
+        arrangeFrames(e.code === 'Digit1' ? 'x' : 'y');
         return;
       }
       if (!mod) return;
