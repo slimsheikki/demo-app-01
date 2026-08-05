@@ -1679,6 +1679,8 @@
     <div id="shortcutsCard">
       <h2>Keyboard</h2>
       <div class="sc-row"><span>Selection tool — marquee, move together</span><kbd>V</kbd></div>
+      <div class="sc-row"><span>Brush tool</span><kbd>B</kbd></div>
+      <div class="sc-row"><span>Hand tool</span><kbd>H</kbd></div>
       <div class="sc-row"><span>Hold to pan</span><kbd>Space</kbd></div>
       <div class="sc-row"><span>Pan</span><kbd>Middle-drag</kbd></div>
       <div class="sc-row"><span>Zoom tool — click, or drag to scrub</span><kbd>Z</kbd></div>
@@ -3820,12 +3822,15 @@
     document.getElementById('toolDraw').addEventListener('click', function () { setTool('draw'); });
     document.getElementById('toolSelect').addEventListener('click', function () { setTool('select'); });
 
-    // V switches to the selection tool
+    // Tool shortcuts: V select, B brush, H hand. H stays live for viewers —
+    // panning is the one thing read-only mode does allow.
     window.addEventListener('keydown', function (e) {
-      if (e.code !== 'KeyV' || e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
-      if (readOnly || !imageNode || isTypingTarget(document.activeElement)) return;
-      e.preventDefault();
-      setTool('select');
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (!imageNode || isTypingTarget(document.activeElement)) return;
+      if (e.code === 'KeyH') { e.preventDefault(); setTool('pan'); return; }
+      if (readOnly) return;
+      if (e.code === 'KeyV') { e.preventDefault(); setTool('select'); }
+      else if (e.code === 'KeyB') { e.preventDefault(); setTool('draw'); }
     });
 
     // ---- Commit / discard buttons ----
